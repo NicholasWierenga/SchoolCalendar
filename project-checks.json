@@ -1,0 +1,75 @@
+{
+  "setup": [
+    {
+      "cwd": "schoolcalendar.client",
+      "argv": [
+        "npm",
+        "ci"
+      ]
+    }
+  ],
+  "backend": {
+    "project": "SchoolCalendar.Server/SchoolCalendar.Server.csproj",
+    "entityFrameworkSource": "SchoolCalendar.Server/Data/CalendarDbContext.cs",
+    "build": [
+      {
+        "cwd": ".",
+        "argv": [
+          "dotnet",
+          "build",
+          "SchoolCalendar.Server/SchoolCalendar.Server.csproj"
+        ]
+      }
+    ]
+  },
+  "frontend": {
+    "manifest": "schoolcalendar.client/package.json",
+    "source": "schoolcalendar.client/src/main.jsx",
+    "preprocess": [
+      {
+        "cwd": "schoolcalendar.client",
+        "argv": [
+          "npm",
+          "run",
+          "build"
+        ]
+      }
+    ]
+  },
+  "vscode": {
+    "folder": ".",
+    "start": [
+      {
+        "cwd": ".",
+        "argv": [
+          "dotnet",
+          "run",
+          "--no-launch-profile",
+          "--project",
+          "SchoolCalendar.Server/SchoolCalendar.Server.csproj"
+        ]
+      }
+    ]
+  },
+  "tests": {
+    "layer": "backend",
+    "commands": [
+      {
+        "cwd": ".",
+        "argv": [
+          "dotnet",
+          "test",
+          "tests/SchoolCalendar.Server.Tests/SchoolCalendar.Server.Tests.csproj",
+          "--results-directory",
+          "{resultsDir}",
+          "--logger",
+          "trx;LogFileName=calendar.trx"
+        ]
+      }
+    ],
+    "report": {
+      "format": "trx",
+      "path": "calendar.trx"
+    }
+  }
+}

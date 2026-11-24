@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="schoolcalendar.client/schoolcalendar.client.esproj">
+    <Build />
+    <Deploy />
+  </Project>
+  <Project Path="SchoolCalendar.Server/SchoolCalendar.Server.csproj" />
+  <Project Path="tests/SchoolCalendar.Server.Tests/SchoolCalendar.Server.Tests.csproj" />
+</Solution>

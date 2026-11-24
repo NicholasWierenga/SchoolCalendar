@@ -1,0 +1,20 @@
+{
+  "startPath": "./",
+  "referenceDate": "2027-06-17",
+  "location": "Library",
+  "calendarImageView": "day",
+  "normal": {
+    "logon": "teacher",
+    "password": "Calendar1!",
+    "firstName": "Mira",
+    "middleName": "",
+    "lastName": "Reyes"
+  },
+  "approver": {
+    "logon": "approver",
+    "password": "Calendar1!",
+    "firstName": "Elena",
+    "middleName": "",
+    "lastName": "Rivera"
+  }
+}
