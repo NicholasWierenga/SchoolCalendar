@@ -103,6 +103,7 @@ public static class EventEndpoints
         CancellationToken cancellationToken)
     {
         string? version = null;
+        JsonInput? changes = null;
         if (http.Features.Get<IHttpRequestBodyDetectionFeature>()?.CanHaveBody == true)
         {
             if (!http.Request.HasJsonContentType())
@@ -114,6 +115,14 @@ public static class EventEndpoints
             if (body.ValueKind != JsonValueKind.Null)
             {
                 version = new JsonInput(body).NullableText("version");
+                if (body.TryGetProperty("changes", out var patch))
+                {
+                    changes = new JsonInput(patch);
+                    if (version is null)
+                    {
+                        throw ApiFailure.Invalid("The version field is required to edit and approve an event.");
+                    }
+                }
             }
         }
 
@@ -123,6 +132,11 @@ public static class EventEndpoints
         if (entry.Status != EventStatus.Pending)
         {
             throw ApiFailure.Conflict("This event is already approved.");
+        }
+
+        if (changes is JsonInput input)
+        {
+            await ApplyAsync(input, entry, db, creating: false, cancellationToken);
         }
 
         await CheckCapacityAsync(db, entry.Date, cancellationToken);

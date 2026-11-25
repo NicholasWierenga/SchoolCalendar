@@ -1,3 +1,8 @@
+export const builtInImages = {
+  football: { label: 'Football', symbol: '🏈' },
+  trophy: { label: 'Trophy', symbol: '🏆' },
+}
+
 export function eventFields(event) {
   return {
     title: event.title,

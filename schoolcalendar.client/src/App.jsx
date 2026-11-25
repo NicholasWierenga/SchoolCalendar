@@ -7,6 +7,7 @@ import { initialDate } from './features/calendar/calendarDates'
 import DirectoryPage from './features/admin/DirectoryPage'
 import EventsPage from './features/events/EventsPage'
 import EventForm from './features/events/EventForm'
+import { changedFields, eventFields } from './features/events/eventFields'
 import { useEventChanges } from './features/events/useEventChanges'
 
 function SchoolCalendar({ user, onSignedOut, onUserChange }) {
@@ -42,6 +43,12 @@ function SchoolCalendar({ user, onSignedOut, onUserChange }) {
     setNotice(message)
     refresh()
   }
+  async function approveEvent(event, values) {
+    const body = { version: event.version }
+    if (values) body.changes = changedFields(eventFields(event), values)
+    const published = await api('/events/' + event.id + '/approve', { method: 'POST', body })
+    eventAdminChanged(event.id, published.title + ' approved and published.')
+  }
   async function directoryChanged(id) {
     refresh()
     if (page !== 'users' || id !== user.id) return
@@ -72,6 +79,20 @@ function SchoolCalendar({ user, onSignedOut, onUserChange }) {
         onSignOut={signOut}
       />
       <main className="workspace">
+        {page !== 'calendar' && notice && (
+          <p className="notice" role="status">
+            {notice}
+            {changes.lastChange && (page === 'events' || page === 'pending') && (
+              <button
+                className="undo-link"
+                type="button"
+                onClick={() => changes.undo().catch((err) => setNotice(err.message))}
+              >
+                Undo edit to {changes.lastChange.after.title}
+              </button>
+            )}
+          </p>
+        )}
         {page === 'calendar' && (
           <Calendar
             user={user}
@@ -85,26 +106,18 @@ function SchoolCalendar({ user, onSignedOut, onUserChange }) {
             focusDateRequest={focusDateRequest}
           />
         )}
-        {(page === 'events' || page === 'pending') && (
+        {user.role === 'approver' && (page === 'events' || page === 'pending') && (
           <EventsPage
             key={page}
             pending={page === 'pending'}
             revision={revision}
             onEdit={(event) => setEditor({ event })}
+            onApprove={approveEvent}
             onChange={eventAdminChanged}
           />
         )}
         {(page === 'users' || page === 'locations') && (
           <DirectoryPage key={page} kind={page === 'users' ? 'user' : 'location'} onChange={directoryChanged} />
-        )}
-        {page !== 'calendar' && notice && (
-          <p className="notice" role="status">
-            {notice}
-            {changes.lastChange && (page === 'events' || page === 'pending') && (
-              <button className="undo-link" type="button" aria-label={'Undo edit to ' + changes.lastChange.after.title}
-                onClick={() => changes.undo().catch(err => setNotice(err.message))}>Undo</button>
-            )}
-          </p>
         )}
       </main>
       {editor && (
@@ -113,6 +126,7 @@ function SchoolCalendar({ user, onSignedOut, onUserChange }) {
           date={editor.date}
           user={user}
           onSave={saveEvent}
+          onApprove={approveEvent}
           onClose={() => setEditor(null)}
         />
       )}

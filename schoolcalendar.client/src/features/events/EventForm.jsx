@@ -1,60 +1,38 @@
 import { useState } from 'react'
 import Modal from '../../components/Modal'
-import EventImage from '../../components/EventImage'
+import EventImagePicker from './EventImagePicker'
 import { useList } from '../../components/useList'
 import { eventFields } from './eventFields'
 
-const maxImageSize = 512 * 1024
-
-function readImage(file) {
-  if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > maxImageSize) {
-    throw new Error('Choose a PNG, JPG or WebP image up to 512 KB.')
-  }
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result)
-    reader.onerror = () => reject(new Error('The image could not be read.'))
-    reader.readAsDataURL(file)
-  })
-}
-
-export default function EventForm({ event, date, user, onSave, onClose }) {
+export default function EventForm({ event, date, user, onSave, onApprove, onClose }) {
   const { items: locations, error: locationError, loading } = useList('/locations')
   const [values, setValues] = useState(() =>
     event ? eventFields(event) : eventFields({ title: '', date, time: '09:00' }),
   )
   const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [submitting, setSubmitting] = useState(null)
   const [reading, setReading] = useState(false)
   const set = (name, value) => setValues((previous) => ({ ...previous, [name]: value }))
   const publish = user.role === 'approver'
+  const canApprove = publish && event?.status === 'pending'
+  const busy = submitting !== null
+  const submitDisabled = busy || reading || loading || Boolean(locationError)
   const title = event ? 'Edit event' : publish ? 'New event' : 'Propose an event'
-  async function upload(input) {
-    const file = input.files[0]
-    if (!file) return
-    setReading(true)
-    setError('')
-    try {
-      set('image', await readImage(file))
-    } catch (err) {
-      setError(err.message)
-      input.value = ''
-    } finally {
-      setReading(false)
-    }
-  }
+  const saveLabel = event ? 'Save changes' : publish ? 'Publish event' : 'Submit for approval'
   async function submit(e) {
     e.preventDefault()
-    if (busy || reading) return
+    if (submitDisabled) return
+    const approving = canApprove && e.nativeEvent.submitter?.value === 'approve'
     setError('')
-    setBusy(true)
+    setSubmitting(approving ? 'approve' : 'save')
     try {
-      await onSave(values)
+      if (approving) await onApprove(event, values)
+      else await onSave(values)
       onClose()
     } catch (err) {
       setError(err.message)
     } finally {
-      setBusy(false)
+      setSubmitting(null)
     }
   }
   const close = () => {
@@ -123,48 +101,36 @@ export default function EventForm({ event, date, user, onSave, onClose }) {
               data-testid="event-description-input"
             />
           </label>
-          <div className="image-fields">
-            <label>
-              Event image
-              <select
-                value={values.image?.startsWith('data:') ? 'upload' : (values.image ?? '')}
-                onChange={(e) => set('image', e.target.value || null)}
-              >
-                <option value="">No image</option>
-                <option value="football">Football</option>
-                <option value="trophy">Trophy</option>
-                {values.image?.startsWith('data:') && <option value="upload">Uploaded image</option>}
-              </select>
-            </label>
-            {values.image && <EventImage image={values.image} />}
-          </div>
-          <label className="upload-field">
-            Upload an image <span className="muted">PNG, JPG or WebP · 512 KB max</span>
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              disabled={busy || reading}
-              onChange={(e) => upload(e.target)}
-              data-testid="event-image-input"
-            />
-          </label>
-          {(error || locationError) && (
-            <p role="alert" className="form-error">
-              {error || locationError}
-            </p>
-          )}
+          <EventImagePicker
+            image={values.image}
+            disabled={busy || reading}
+            onChange={(image) => set('image', image)}
+            onReadingChange={setReading}
+            onError={setError}
+          />
         </div>
-        <footer className="form-actions">
+        {(error || locationError) && (
+          <p role="alert" className="form-error event-form-error">
+            {error || locationError}
+          </p>
+        )}
+        <footer className="form-actions event-form-actions">
           <button type="button" onClick={close} disabled={busy} data-testid="cancel-form">
             Cancel
           </button>
           <button
-            className="primary"
-            disabled={busy || reading || loading || Boolean(locationError)}
+            type="submit"
+            className={canApprove ? undefined : 'primary'}
+            disabled={submitDisabled}
             data-testid="save-form"
           >
-            {busy ? 'Saving…' : event ? 'Save changes' : publish ? 'Publish event' : 'Submit for approval'}
+            {submitting === 'save' ? 'Saving…' : saveLabel}
           </button>
+          {canApprove && (
+            <button type="submit" value="approve" className="primary" disabled={submitDisabled}>
+              {submitting === 'approve' ? 'Approving…' : 'Save and approve'}
+            </button>
+          )}
         </footer>
       </form>
     </Modal>

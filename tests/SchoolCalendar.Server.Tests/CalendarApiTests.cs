@@ -134,6 +134,107 @@ public sealed class CalendarApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task EditAndApprovePublishesRevisedProposalWithOriginalCreator()
+    {
+        using var admin = await SignInAsync(Administrator.Login, Administrator.Password);
+        var (teacher, _) = await CreateTeacherAsync(admin);
+        using (teacher)
+        {
+            var location = await ReadAsync<Location>(await admin.PostAsJsonAsync("/api/locations", new { name = "Gym" }));
+            var pending = await ReadAsync<CalendarEvent>(await teacher.PostAsJsonAsync("/api/events", new
+            {
+                title = "Science fair", description = "Student exhibits", date = Date, time = "15:00",
+                locationId = location.Id, image = "football",
+            }));
+
+            var approved = await ReadAsync<CalendarEvent>(await admin.PostAsJsonAsync($"/api/events/{pending.Id}/approve", new
+            {
+                version = pending.Version,
+                changes = new
+                {
+                    title = "Science exhibition", date = FollowingDate, time = "16:00", locationId = (int?)null,
+                    creatorName = "Forged", approverName = "Forged", approvedAt = pending.CreatedAt.AddDays(-1),
+                },
+            }));
+
+            Assert.Equal("Science exhibition", approved.Title);
+            Assert.Equal("Student exhibits", approved.Description);
+            Assert.Equal(FollowingDate, approved.Date);
+            Assert.Equal("16:00", approved.Time);
+            Assert.Null(approved.LocationId);
+            Assert.Null(approved.Location);
+            Assert.Equal("football", approved.Image);
+            Assert.Equal("approved", approved.Status);
+            Assert.Equal(pending.CreatorName, approved.CreatorName);
+            Assert.Equal(pending.CreatedAt, approved.CreatedAt);
+            Assert.Equal("Baker, Celia Renee", approved.ApproverName);
+            Assert.InRange(Assert.IsType<DateTimeOffset>(approved.ApprovedAt), pending.CreatedAt, DateTimeOffset.UtcNow.AddSeconds(5));
+            Assert.NotEqual(pending.Version, approved.Version);
+            Assert.Empty(await ReadAsync<CalendarEvent[]>(await teacher.GetAsync(CalendarPath(Date))));
+            Assert.Equal(approved, Assert.Single(await ReadAsync<CalendarEvent[]>(await teacher.GetAsync(CalendarPath(FollowingDate)))));
+            Assert.Empty(await ReadAsync<CalendarEvent[]>(await admin.GetAsync("/api/events/pending")));
+        }
+    }
+
+    [Fact]
+    public async Task EditAndApproveChecksCapacityOnTheRevisedDateAndPreservesRejectedProposal()
+    {
+        using var admin = await SignInAsync(Administrator.Login, Administrator.Password);
+        var (teacher, _) = await CreateTeacherAsync(admin);
+        using (teacher)
+        {
+            for (var index = 0; index < 10; index++)
+            {
+                await CreateEventAsync(admin, $"Event {index}", Date, $"08:{index:00}");
+            }
+
+            var first = await CreateEventAsync(teacher, "Can move", Date, "10:00");
+            var moved = await ReadAsync<CalendarEvent>(await admin.PostAsJsonAsync($"/api/events/{first.Id}/approve",
+                new { version = first.Version, changes = new { date = FollowingDate } }));
+            Assert.Equal(FollowingDate, moved.Date);
+            Assert.Equal("approved", moved.Status);
+
+            var second = await CreateEventAsync(teacher, "Keep pending", FollowingDate, "11:00");
+            using var rejected = await admin.PostAsJsonAsync($"/api/events/{second.Id}/approve",
+                new { version = second.Version, changes = new { date = Date, title = "Uncommitted" } });
+            Assert.Equal(HttpStatusCode.Conflict, rejected.StatusCode);
+            Assert.Equal("capacity", (await rejected.Content.ReadFromJsonAsync<ApiError>())?.Code);
+            Assert.Equal(second, Assert.Single(await ReadAsync<CalendarEvent[]>(await admin.GetAsync("/api/events/pending"))));
+            Assert.Equal(moved, Assert.Single(await ReadAsync<CalendarEvent[]>(await teacher.GetAsync(CalendarPath(FollowingDate)))));
+            Assert.Equal(10, (await ReadAsync<CalendarEvent[]>(await teacher.GetAsync(CalendarPath(Date)))).Length);
+        }
+    }
+
+    [Fact]
+    public async Task EditAndApproveRejectsUnauthorizedStaleAndInvalidChanges()
+    {
+        using var admin = await SignInAsync(Administrator.Login, Administrator.Password);
+        var (teacher, _) = await CreateTeacherAsync(admin);
+        using (teacher)
+        {
+            var pending = await CreateEventAsync(teacher, "Science fair", Date, "15:00");
+            var approval = $"/api/events/{pending.Id}/approve";
+            var edit = new { version = pending.Version, changes = new { title = "Uncommitted" } };
+            using var forbidden = await teacher.PostAsJsonAsync(approval, edit);
+            Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+
+            var revised = await ReadAsync<CalendarEvent>(await PatchAsync(admin,
+                $"/api/events/{pending.Id}", new { version = pending.Version, title = "Revised proposal" }));
+            using var stale = await admin.PostAsJsonAsync(approval, edit);
+            Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+
+            using var missingVersion = await admin.PostAsJsonAsync(approval, new { changes = edit.changes });
+            Assert.Equal(HttpStatusCode.BadRequest, missingVersion.StatusCode);
+
+            using var invalid = await admin.PostAsJsonAsync(approval,
+                new { version = revised.Version, changes = new { title = "Uncommitted", date = "2027-02-29" } });
+            Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+            Assert.Equal(revised, Assert.Single(await ReadAsync<CalendarEvent[]>(await admin.GetAsync("/api/events/pending"))));
+            Assert.Empty(await ReadAsync<CalendarEvent[]>(await teacher.GetAsync(CalendarPath(Date))));
+        }
+    }
+
+    [Fact]
     public async Task StaleAndInvalidEditsPreservePublishedEvent()
     {
         using var admin = await SignInAsync(Administrator.Login, Administrator.Password);
@@ -208,8 +309,10 @@ public sealed class CalendarApiTests : IAsyncLifetime
     }
 
     private sealed record User(int Id);
+    private sealed record Location(int Id);
     private sealed record ApiError(string Code);
     private sealed record CalendarEvent(
-        int Id, string Title, string Date, string Time, string? Image, string Status, string CreatorName,
-        string? ApproverName, DateTimeOffset CreatedAt, DateTimeOffset? ApprovedAt, string Version);
+        int Id, string Title, string Description, int? LocationId, string? Location, string Date, string Time,
+        string? Image, string Status, string CreatorName, string? ApproverName, DateTimeOffset CreatedAt,
+        DateTimeOffset? ApprovedAt, string Version);
 }
