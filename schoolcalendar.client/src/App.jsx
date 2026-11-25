@@ -18,13 +18,14 @@ function SchoolCalendar({ user, onSignedOut, onUserChange }) {
   const [focusDateRequest, setFocusDateRequest] = useState(null)
   const [notice, setNotice] = useState('')
   const refresh = () => setRevision((n) => n + 1)
+  function focusCalendar(date) {
+    setDate(date)
+    setFocusDateRequest((previous) => ({ date, nonce: (previous?.nonce ?? 0) + 1 }))
+  }
   function saved(event, message) {
     refresh()
     setNotice(message)
-    if (event.status === 'approved') {
-      setDate(event.date)
-      setFocusDateRequest((previous) => ({ date: event.date, nonce: (previous?.nonce ?? 0) + 1 }))
-    }
+    if (user.role === 'approver') focusCalendar(event.date)
   }
   const changes = useEventChanges(saved)
   function navigate(next) {
@@ -48,6 +49,7 @@ function SchoolCalendar({ user, onSignedOut, onUserChange }) {
     if (values) body.changes = changedFields(eventFields(event), values)
     const published = await api('/events/' + event.id + '/approve', { method: 'POST', body })
     eventAdminChanged(event.id, published.title + ' approved and published.')
+    if (page === 'calendar') focusCalendar(published.date)
   }
   async function directoryChanged(id) {
     refresh()
@@ -82,7 +84,7 @@ function SchoolCalendar({ user, onSignedOut, onUserChange }) {
         {page !== 'calendar' && notice && (
           <p className="notice" role="status">
             {notice}
-            {changes.lastChange && (page === 'events' || page === 'pending') && (
+            {changes.lastChange && page === 'events' && (
               <button
                 className="undo-link"
                 type="button"
@@ -106,10 +108,8 @@ function SchoolCalendar({ user, onSignedOut, onUserChange }) {
             focusDateRequest={focusDateRequest}
           />
         )}
-        {user.role === 'approver' && (page === 'events' || page === 'pending') && (
+        {user.role === 'approver' && page === 'events' && (
           <EventsPage
-            key={page}
-            pending={page === 'pending'}
             revision={revision}
             onEdit={(event) => setEditor({ event })}
             onApprove={approveEvent}

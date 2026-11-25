@@ -26,7 +26,10 @@ public static class EventEndpoints
     }
 
     private static Task<EventResponse[]> ListCalendarAsync(
-        string? from, string? to, CalendarDbContext db, CancellationToken cancellationToken)
+        string? from, string? to, CalendarDbContext db, CancellationToken cancellationToken) =>
+        ListAsync(InDateRange(db.Events.Where(entry => entry.Status == EventStatus.Approved), from, to), cancellationToken);
+
+    private static IQueryable<CalendarEvent> InDateRange(IQueryable<CalendarEvent> events, string? from, string? to)
     {
         var first = CalendarValidation.Date(from);
         var last = CalendarValidation.Date(to);
@@ -35,15 +38,15 @@ public static class EventEndpoints
             throw ApiFailure.Invalid("The last date must be on or after the first date.");
         }
 
-        return ListAsync(db.Events.Where(entry =>
-            entry.Status == EventStatus.Approved && entry.Date >= first && entry.Date <= last), cancellationToken);
+        return events.Where(entry => entry.Date >= first && entry.Date <= last);
     }
 
     private static Task<EventResponse[]> ListPendingAsync(CalendarDbContext db, CancellationToken cancellationToken) =>
         ListAsync(db.Events.Where(entry => entry.Status == EventStatus.Pending), cancellationToken);
 
-    private static Task<EventResponse[]> ListAllAsync(CalendarDbContext db, CancellationToken cancellationToken) =>
-        ListAsync(db.Events, cancellationToken);
+    private static Task<EventResponse[]> ListAllAsync(
+        string? from, string? to, CalendarDbContext db, CancellationToken cancellationToken) =>
+        ListAsync(from is null && to is null ? db.Events : InDateRange(db.Events, from, to), cancellationToken);
 
     private static async Task<EventResponse[]> ListAsync(
         IQueryable<CalendarEvent> entries, CancellationToken cancellationToken)

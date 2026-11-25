@@ -65,7 +65,13 @@ export function groupEvents(events) {
     byDate.get(event.date).push(event)
   }
   for (const day of byDate.values()) {
-    day.sort((a, b) => a.time.localeCompare(b.time) || a.title.localeCompare(b.title) || a.id - b.id)
+    day.sort((a, b) => a.time.localeCompare(b.time)
+      || Number(a.status === 'pending') - Number(b.status === 'pending')
+      || a.title.localeCompare(b.title) || a.id - b.id)
   }
   return byDate
+}
+
+export function publishedCount(events) {
+  return events.filter(event => event.status === 'approved').length
 }

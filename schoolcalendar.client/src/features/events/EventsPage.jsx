@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Check, Eye, Pencil, Trash2 } from 'lucide-react'
 import { api } from '../../api'
 import { useList } from '../../components/useList'
@@ -7,7 +7,7 @@ import EventDetails from './EventDetails'
 import { localSchedule } from './eventFields'
 import './events.css'
 
-function EventTable({ rows, pending, queue, approving, problem, onApprove, onView, onEdit, onDelete }) {
+function EventTable({ rows, pending, approving, problem, onApprove, onView, onEdit, onDelete }) {
   const personLabel = pending ? 'Submitted by' : 'Approved by'
   return (
     <div className="table-wrap">
@@ -24,7 +24,7 @@ function EventTable({ rows, pending, queue, approving, problem, onApprove, onVie
           {rows.map((event) => {
             const busy = approving === event.id
             return (
-              <tr key={event.id} data-testid={queue ? 'pending-event' : 'event-record'}>
+              <tr key={event.id} data-testid="event-record">
                 <th scope="row">
                   <span data-testid="event-title">{event.title}</span>
                   {event.location && <small>{event.location}</small>}
@@ -77,7 +77,7 @@ function EventTable({ rows, pending, queue, approving, problem, onApprove, onVie
                       aria-label={'Delete ' + event.title}
                       disabled={busy}
                       onClick={() => onDelete(event)}
-                      data-testid={queue ? 'delete-pending' : 'delete-record'}
+                      data-testid="delete-record"
                     >
                       <Trash2 size={16} aria-hidden="true" />
                     </button>
@@ -97,9 +97,8 @@ function EventTable({ rows, pending, queue, approving, problem, onApprove, onVie
   )
 }
 
-export default function EventsPage({ pending: queue, revision, onEdit, onChange, onApprove }) {
-  const { items, loading, error } = useList(queue ? '/events/pending' : '/events/manage', revision)
-  const headingId = useId()
+export default function EventsPage({ revision, onEdit, onChange, onApprove }) {
+  const { items, loading, error } = useList('/events/manage', revision)
   const [detail, setDetail] = useState(null)
   const [deleting, setDeleting] = useState(null)
   const [approving, setApproving] = useState(null)
@@ -122,19 +121,17 @@ export default function EventsPage({ pending: queue, revision, onEdit, onChange,
     }
   }
 
-  const groups = queue
-    ? [{ status: 'pending', rows: items }]
-    : [
-        { status: 'pending', title: 'Pending requests', rows: items.filter((event) => event.status === 'pending') },
-        { status: 'approved', title: 'Published events', rows: items.filter((event) => event.status === 'approved') },
-      ]
+  const groups = [
+    { status: 'pending', title: 'Pending requests', rows: items.filter((event) => event.status === 'pending') },
+    { status: 'approved', title: 'Published events', rows: items.filter((event) => event.status === 'approved') },
+  ]
 
   return (
     <section className="content-page">
       <header className="page-heading">
-        <h1 id={headingId}>{queue ? 'Approval queue' : 'Events'}</h1>
+        <h1>Events</h1>
       </header>
-      <div className="event-groups" data-testid={queue ? 'pending-list' : 'event-list'} aria-busy={!!loading}>
+      <div className="event-groups" data-testid="event-list" aria-busy={!!loading}>
         {error && (
           <p className="form-error" role="alert">
             {error}
@@ -144,20 +141,18 @@ export default function EventsPage({ pending: queue, revision, onEdit, onChange,
         {!loading &&
           !error &&
           groups.map(({ rows, status, title }) => {
-            const groupHeadingId = headingId + '-' + status
+            const groupHeadingId = 'events-' + status
             const pending = status === 'pending'
             return (
               <section
                 key={status}
-                className={queue ? undefined : 'event-group event-group--' + status}
-                aria-labelledby={queue ? headingId : groupHeadingId}
+                className={pending ? 'event-group event-group--pending' : 'event-group'}
+                aria-labelledby={groupHeadingId}
               >
-                {title && (
-                  <header className="event-group-heading">
-                    <h2 id={groupHeadingId}>{title}</h2>
-                    <span className="event-group-count">{rows.length}</span>
-                  </header>
-                )}
+                <header className="event-group-heading">
+                  <h2 id={groupHeadingId}>{title}</h2>
+                  <span className="event-group-count">{rows.length}</span>
+                </header>
                 {rows.length === 0 ? (
                   <p className="empty-state">
                     {pending ? 'No events are waiting for approval.' : 'No published events yet.'}
@@ -166,7 +161,6 @@ export default function EventsPage({ pending: queue, revision, onEdit, onChange,
                   <EventTable
                     rows={rows}
                     pending={pending}
-                    queue={queue}
                     approving={approving}
                     problem={problem?.id === detail?.id ? null : problem}
                     onApprove={approve}

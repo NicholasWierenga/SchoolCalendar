@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import FullCalendar from '@fullcalendar/react'
 import dayGridPlugin from '@fullcalendar/react/daygrid'
 import classicTheme from '@fullcalendar/react/themes/classic'
@@ -7,10 +7,11 @@ import '@fullcalendar/react/themes/classic/theme.css'
 import '@fullcalendar/react/themes/classic/palette.css'
 import { MonthEvent } from './CalendarViews'
 import { dateKey, formatDay, monthEventLimit } from './calendarDates'
+import { monthOverflowLabel, monthPreview } from './monthPreview'
 
 const plugins = [dayGridPlugin, classicTheme]
 const dayHeaderFormat = { weekday: 'short' }
-const eventOrder = 'start,title,id'
+const eventOrder = 'previewOrder,start,title,id'
 
 function markDay({ el }) {
   el.dataset.testid = 'month-day'
@@ -24,17 +25,45 @@ function markMore({ el }) {
   el.setAttribute('aria-controls', 'school-date-events')
 }
 
+function MonthMoreLabel({ count, previews }) {
+  const [date, setDate] = useState()
+  // FullCalendar supplies the overflow count to its content hook, but the date is on the cell.
+  const locateCell = useCallback(element => {
+    if (element) setDate(element.closest('[data-date]')?.dataset.date)
+  }, [])
+  const preview = previews.get(date)
+  const label = preview ? monthOverflowLabel(preview.hiddenPublished, preview.hiddenPending) : `+${count} more`
+  const mixed = preview?.hiddenPublished && preview.hiddenPending
+  return (
+    <span ref={locateCell} className={preview?.hiddenPending ? 'school-more-breakdown' : undefined}>
+      {mixed ? (
+        <>
+          <span className="school-more-count">{preview.hiddenPublished} <span className="school-more-word">more </span>published</span>
+          <span className="school-more-separator"> · </span>
+          <span className="school-more-count">{preview.hiddenPending} pending</span>
+        </>
+      ) : label}
+    </span>
+  )
+}
+
 export default memo(function MonthGrid({
-  month, selectedDate, events, byDate, compact, loading, dropDate, dropFull,
+  month, selectedDate, byDate, compact, loading, dropDate, dropFull,
   onDate, onEvent, onEdit, onChoose, onMore,
 }) {
-  const calendarEvents = useMemo(() => compact ? [] : events.map(event => ({
-    id: String(event.id),
-    title: event.title,
-    start: `${event.date}T${event.time}`,
-    interactive: false,
-    extendedProps: { record: event },
-  })), [compact, events])
+  const previews = useMemo(() => new Map(Array.from(byDate, ([date, events]) => [date, monthPreview(events)])), [byDate])
+  const calendarEvents = useMemo(() => {
+    if (compact) return []
+    return Array.from(previews.values()).flatMap(({ visible, hidden }) => (
+      [...visible, ...hidden].map((event, previewOrder) => ({
+        id: String(event.id),
+        title: event.title,
+        start: `${event.date}T${event.time}`,
+        interactive: false,
+        extendedProps: { record: event, previewOrder },
+      }))
+    ))
+  }, [compact, previews])
 
   function openMore(event) {
     const trigger = event.target.closest('[data-more-date]')
@@ -77,7 +106,9 @@ export default memo(function MonthGrid({
         navLinkDayClick={date => onDate(dateKey(date))}
         navLinkHint={(_, date) => {
           const key = dateKey(date)
-          const count = byDate.get(key)?.length ?? 0
+          const preview = previews.get(key)
+          if (preview?.pendingCount) return `${formatDay(key)}, ${preview.publishedCount} published, ${preview.pendingCount} pending`
+          const count = preview?.publishedCount ?? 0
           return `${formatDay(key)}, ${count} ${count === 1 ? 'event' : 'events'}`
         }}
         dayHeaderFormat={dayHeaderFormat}
@@ -85,13 +116,16 @@ export default memo(function MonthGrid({
         dayRowClass="school-week"
         dayCellClass={({ date, dow, isOther }) => {
           const key = dateKey(date)
+          const preview = previews.get(key)
           return [
             'school-month-cell',
             (dow === 0 || dow === 6) && 'school-month-weekend',
             isOther && 'school-month-other',
             key === selectedDate && 'school-month-selected',
             key === dropDate && (dropFull ? 'school-drop-full' : 'school-drop-ready'),
-            byDate.has(key) && 'school-month-has-events',
+            preview?.publishedCount && 'school-month-has-published',
+            preview?.pendingCount && 'school-month-has-pending',
+            preview?.hiddenPublished && preview.hiddenPending && 'school-month-mixed-overflow',
           ].filter(Boolean).join(' ')
         }}
         dayCellTopClass="school-date-heading"
@@ -104,7 +138,8 @@ export default memo(function MonthGrid({
         eventInnerClass="school-fc-event-content"
         listItemEventBeforeClass="school-fc-event-marker"
         moreLinkClass="school-more-link"
-        moreLinkContent={({ num }) => `+${num} more`}
+        moreLinkInnerClass="school-more-link-content"
+        moreLinkContent={({ num }) => <MonthMoreLabel count={num} previews={previews} />}
         moreLinkDidMount={markMore}
         events={calendarEvents}
         eventContent={({ event }) => {

@@ -17,6 +17,8 @@ Open **http://localhost:5187**. The first start creates the database, applies mi
 | `approver` | `Calendar1!` | Publish and edit events, review proposals, and manage users and locations |
 | `teacher` | `Calendar1!` | View the calendar and submit proposals |
 
+Approvers can review submissions under **Events → Pending requests** or open the pencil on a pending calendar entry to edit or approve it. Only published events appear on the school-wide calendar. In the approver’s Month view, published events get first choice of the two visible slots. The Day view includes every request at its proposed start time, marked with a dashed outline and a clock. Only published events count toward the daily limit of ten.
+
 The demo opens in April 2027. April 16 has ten approved sessions. Open **+8 more** to see the full day in time order. Drag a session onto a date, or hold it over a month arrow to reach another month. The first page turn is immediate and repeats every 0.8 seconds. Escape cancels. Undo restores the last successful move or pencil edit. A selected date stays highlighted across month changes only while its cell is visible.
 
 ## Connect in SSMS

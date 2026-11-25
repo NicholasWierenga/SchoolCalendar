@@ -296,9 +296,6 @@ button.new-event {
   align-items: center;
   gap: 3px;
 }
-.approve-button {
-  color: var(--forest);
-}
 .table-wrap {
   overflow-x: auto;
 }

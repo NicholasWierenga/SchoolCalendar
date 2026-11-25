@@ -53,6 +53,7 @@ async function listEvents(page, path) {
 test('shows pending requests before published events and approves a request from its row', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await signIn(page)
+  await expect(page.getByRole('navigation').getByRole('button', { name: 'Approval queue' })).toHaveCount(0)
   await openEvents(page)
 
   const sections = pendingRequests(page).or(publishedEvents(page))

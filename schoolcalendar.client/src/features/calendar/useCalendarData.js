@@ -15,20 +15,21 @@ export function useCompactCalendar(rootRef) {
   return compact
 }
 
-export function useMonthEvents(month, refreshKey) {
+export function useMonthEvents(month, refreshKey, isApprover) {
   const [response, setResponse] = useState(null)
-  const current = response?.month === month ? response : null
+  const { from, to } = monthGridRange(month)
+  const path = `${isApprover ? '/events/manage' : '/events'}?from=${from}&to=${to}`
+  const current = response?.path === path ? response : null
   useEffect(() => {
-    const { from, to } = monthGridRange(month)
     const controller = new AbortController()
-    api(`/events?from=${from}&to=${to}`, { signal: controller.signal })
+    api(path, { signal: controller.signal })
       .then(events => {
-        if (!controller.signal.aborted) setResponse({ month, events, error: null })
+        if (!controller.signal.aborted) setResponse({ path, events, error: null })
       })
       .catch(error => {
-        if (!controller.signal.aborted) setResponse({ month, error: error.message, events: noEvents })
+        if (!controller.signal.aborted) setResponse({ path, error: error.message, events: noEvents })
       })
     return () => controller.abort()
-  }, [month, refreshKey])
+  }, [path, refreshKey])
   return { events: current?.events ?? noEvents, loading: !current, error: current?.error }
 }

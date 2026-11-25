@@ -31,3 +31,13 @@ test('sorts a day independently and leaves the source list intact', () => {
   assert.deepEqual(grouped.get('2027-04-17').map(event => event.id), [4])
   assert.deepEqual(records.map(event => event.id), [1, 2, 3, 4])
 })
+
+test('orders requests by start time and puts published sessions first when starts match', () => {
+  const date = '2027-04-16'
+  const records = [
+    { id: 1, date, time: '10:15', title: 'Art', status: 'pending' },
+    { id: 2, date, time: '08:20', title: 'Poetry', status: 'pending' },
+    { id: 3, date, time: '10:15', title: 'Strings', status: 'approved' },
+  ]
+  assert.deepEqual(groupEvents(records).get(date).map(event => event.id), [2, 3, 1])
+})

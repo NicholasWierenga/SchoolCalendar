@@ -4,7 +4,7 @@ import MonthGrid from './MonthGrid'
 import { CompactSummary, DatePopover, DayAgenda } from './CalendarViews'
 import { noEvents, useCompactCalendar, useMonthEvents } from './useCalendarData'
 import useCalendarDrag from './useCalendarDrag'
-import { dailyCapacity, formatShortDay, groupEvents, initialDate, monthGridRange, monthStart, shiftDay, shiftMonth } from './calendarDates'
+import { dailyCapacity, formatShortDay, groupEvents, initialDate, monthGridRange, monthStart, publishedCount, shiftDay, shiftMonth } from './calendarDates'
 import './calendar.css'
 
 function periodSelection(date, mode) {
@@ -22,11 +22,11 @@ export default function Calendar({ user, onEdit, refreshKey, lastChange, onMove,
   const [feedback, setFeedback] = useState(null)
   const { date, month, mode } = period
   const compact = useCompactCalendar(rootRef)
-  const { events, loading, error } = useMonthEvents(month, refreshKey)
+  const isApprover = user.role === 'approver'
+  const { events, loading, error } = useMonthEvents(month, refreshKey, isApprover)
   const byDate = useMemo(() => groupEvents(events), [events])
   const records = useMemo(() => new Map(events.map(event => [String(event.id), event])), [events])
   const eventsToday = byDate.get(date) ?? noEvents
-  const isApprover = user.role === 'approver'
   const inDayView = mode === 'day'
   const gridRange = monthGridRange(month)
   const visibleSelectedDate = date >= gridRange.from && date <= gridRange.to
@@ -196,7 +196,8 @@ export default function Calendar({ user, onEdit, refreshKey, lastChange, onMove,
   }
 
   const dropDate = drag?.date
-  const dropFull = Boolean(dropDate && dropDate !== drag.event.date && (byDate.get(dropDate)?.length ?? 0) >= dailyCapacity)
+  const dropFull = dropDate && drag.event.status === 'approved' && dropDate !== drag.event.date
+    && publishedCount(byDate.get(dropDate) ?? noEvents) >= dailyCapacity
   const moveAction = isApprover ? chooseDate : undefined
   const editAction = isApprover ? onEdit : undefined
   const liveNotice = choosing
@@ -214,14 +215,14 @@ export default function Calendar({ user, onEdit, refreshKey, lastChange, onMove,
       onKeyDown={handleEscape}
     >
       <CalendarToolbar
-        date={date} month={month} mode={mode} arrow={drag?.arrow} eventCount={eventsToday.length} loading={loading}
+        date={date} month={month} mode={mode} arrow={drag?.arrow} events={eventsToday} isApprover={isApprover} loading={loading}
         onNavigate={navigate} onModeChange={changeMode}
       />
 
-      {inDayView ? <DayAgenda date={date} events={eventsToday} onEdit={editAction} loading={loading} /> : (
+      {inDayView ? <DayAgenda date={date} events={eventsToday} isApprover={isApprover} onEdit={editAction} loading={loading} /> : (
         <>
           <MonthGrid
-            month={month} selectedDate={date} events={events} byDate={byDate} compact={compact} loading={loading}
+            month={month} selectedDate={date} byDate={byDate} compact={compact} loading={loading}
             dropDate={dropDate} dropFull={dropFull} onDate={activateDate} onEvent={activateEvent}
             onEdit={editAction} onChoose={moveAction} onMore={openPopup}
           />

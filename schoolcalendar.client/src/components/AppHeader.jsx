@@ -1,9 +1,8 @@
-import { CalendarDays, ClipboardCheck, List, LogOut, MapPin, Plus, UsersRound } from 'lucide-react'
+import { CalendarDays, List, LogOut, MapPin, Plus, UsersRound } from 'lucide-react'
 import SchoolBrand from './SchoolBrand'
 
 const links = [
   ['calendar', 'Calendar', 'nav-calendar', CalendarDays],
-  ['pending', 'Approval queue', 'nav-pending', ClipboardCheck],
   ['events', 'Events', 'nav-event-management', List],
   ['users', 'Users', 'nav-user-management', UsersRound],
   ['locations', 'Locations', 'nav-location-management', MapPin],

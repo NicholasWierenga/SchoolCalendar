@@ -65,6 +65,27 @@ public sealed class CalendarApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ApproversCanReviewPublishedAndPendingEventsWithinTheCalendarRange()
+    {
+        using var admin = await SignInAsync(Administrator.Login, Administrator.Password);
+        var (teacher, _) = await CreateTeacherAsync(admin);
+        using (teacher)
+        {
+            var request = await CreateEventAsync(teacher, "Choir proposal", Date, "08:00");
+            var published = await CreateEventAsync(admin, "Jazz practice", FollowingDate, "13:00");
+            var later = await CreateEventAsync(teacher, "Later proposal", "2028-03-02", "09:00");
+            var range = $"?from={Date}&to={FollowingDate}";
+            var review = "/api/events/manage" + range;
+
+            Assert.Equal(new[] { request, published }, await ReadAsync<CalendarEvent[]>(await admin.GetAsync(review)));
+            Assert.Equal(new[] { request, published, later }, await ReadAsync<CalendarEvent[]>(await admin.GetAsync("/api/events/manage")));
+            Assert.Equal(HttpStatusCode.Forbidden, (await teacher.GetAsync(review)).StatusCode);
+            Assert.Equal(new[] { published }, await ReadAsync<CalendarEvent[]>(await admin.GetAsync("/api/events" + range)));
+            Assert.Equal(new[] { published }, await ReadAsync<CalendarEvent[]>(await teacher.GetAsync("/api/events" + range)));
+        }
+    }
+
+    [Fact]
     public async Task AuthenticatedActorsOwnAuditFieldsAndMovingPreservesThem()
     {
         using var admin = await SignInAsync(Administrator.Login, Administrator.Password);

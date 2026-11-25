@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
-import { GripVertical, MapPin, Pencil, X } from 'lucide-react'
+import { Clock, GripVertical, MapPin, Pencil, X } from 'lucide-react'
 import EventImage from '../../components/EventImage'
-import { formatDay, formatTime, formatTimeParts, monthEventLimit } from './calendarDates'
+import { formatDay, formatTime, formatTimeParts } from './calendarDates'
+import { monthOverflowLabel, monthPreview } from './monthPreview'
 
 function EditButton({ event, onEdit, small = false }) {
   if (!onEdit) return null
@@ -21,13 +22,14 @@ function EditButton({ event, onEdit, small = false }) {
 }
 
 export function MonthEvent({ event, single, onActivate, onChoose, onEdit }) {
+  const pending = event.status === 'pending'
   const time = formatTime(event.time)
-  const summary = [time, event.title, event.location].filter(Boolean).join(' · ')
+  const summary = [time, event.title, event.location, pending && 'Pending approval'].filter(Boolean).join(' · ')
   return (
     <div className="school-month-item" data-testid="calendar-event">
       <button
         type="button"
-        className={`school-month-summary${single ? ' school-month-single' : ''}`}
+        className={`school-month-summary${single ? ' school-month-single' : ''}${pending ? ' school-month-pending' : ''}`}
         onClick={() => onActivate(event)}
         title={summary}
         aria-label={summary}
@@ -41,7 +43,10 @@ export function MonthEvent({ event, single, onActivate, onChoose, onEdit }) {
         data-testid={onEdit ? 'event-drag-handle' : undefined}
       >
         <span className="school-month-line">
-          <time data-testid="event-time" dateTime={`${event.date}T${event.time}`}>{time}</time>
+          <time data-testid="event-time" dateTime={`${event.date}T${event.time}`}>
+            {pending && <Clock className="school-month-pending-clock" aria-hidden="true" />}
+            {time}
+          </time>
           <span className="school-month-title">
             <EventImage image={event.image} draggable={false} className="school-event-image school-event-image-small" />
             <span data-testid="event-title">{event.title}</span>
@@ -54,28 +59,38 @@ export function MonthEvent({ event, single, onActivate, onChoose, onEdit }) {
   )
 }
 
-export function DayAgenda({ date, events, onEdit, loading }) {
+function PendingLabel() {
+  return <span className="school-pending-label"><Clock aria-hidden="true" />Pending request</span>
+}
+
+export function DayAgenda({ date, events, isApprover, onEdit, loading }) {
   return (
     <section className="school-agenda" aria-label="Daily agenda" aria-busy={loading} data-testid={loading ? undefined : 'day-view'} data-date={date}>
-      {events.map(event => {
+      {events.map((event, index) => {
         const { clock, period } = formatTimeParts(event.time)
+        const pending = event.status === 'pending'
+        const repeatedStart = isApprover && events[index - 1]?.time === event.time
+        const moreAtStart = isApprover && events[index + 1]?.time === event.time
         return (
-          <article className="school-agenda-event" key={event.id} data-testid="calendar-event">
-            <time className="school-agenda-time" data-testid="event-time" dateTime={`${event.date}T${event.time}`}>
+          <article className="school-agenda-event" key={event.id} data-testid="calendar-event" data-more-at-start={moreAtStart || undefined}>
+            <time className={`school-agenda-time${repeatedStart ? ' school-agenda-time-repeated' : ''}`} data-testid="event-time" dateTime={`${event.date}T${event.time}`}>
               {clock} <small>{period}</small>
             </time>
-            <div className="school-agenda-description">
-              <h3>
-                <EventImage image={event.image} className="school-event-image" />
-                <span data-testid="event-title">{event.title}</span>
-              </h3>
-              {event.description && <p data-testid="event-description">{event.description}</p>}
+            <div className={`school-agenda-card${pending ? ' school-agenda-pending' : ''}`}>
+              <div className="school-agenda-description">
+                <h3>
+                  <EventImage image={event.image} className="school-event-image" />
+                  <span data-testid="event-title">{event.title}</span>
+                </h3>
+                {pending && <PendingLabel />}
+                {event.description && <p data-testid="event-description">{event.description}</p>}
+              </div>
+              <div className="school-agenda-meta">
+                {event.location && <div className="school-agenda-location"><MapPin aria-hidden="true" /><span data-testid="event-location">{event.location}</span></div>}
+                <p className="school-agenda-creator">Created by <span data-testid="event-creator">{event.creatorName}</span></p>
+              </div>
+              <EditButton event={event} onEdit={onEdit} />
             </div>
-            <div className="school-agenda-meta">
-              {event.location && <div className="school-agenda-location"><MapPin aria-hidden="true" /><span data-testid="event-location">{event.location}</span></div>}
-              <p className="school-agenda-creator">Created by <span data-testid="event-creator">{event.creatorName}</span></p>
-            </div>
-            <EditButton event={event} onEdit={onEdit} />
           </article>
         )
       })}
@@ -85,15 +100,15 @@ export function DayAgenda({ date, events, onEdit, loading }) {
 }
 
 export function CompactSummary({ date, events, onDay, onEvent, onEdit, onChoose, onMore, expanded, loading }) {
-  const overflow = events.length - monthEventLimit
+  const { visible, hidden, hiddenPublished, hiddenPending } = monthPreview(events)
   return (
     <section className="school-compact-summary" aria-label={`Events for ${formatDay(date)}`}>
       <h3>{formatDay(date)}</h3>
-      {events.slice(0, monthEventLimit).map(event => (
+      {visible.map(event => (
         <MonthEvent key={event.id} event={event} onActivate={onEvent} onChoose={onChoose} onEdit={onEdit} />
       ))}
       {!events.length && !loading && <p>No events scheduled.</p>}
-      {overflow > 0 ? (
+      {hidden.length ? (
         <button
           type="button"
           className="school-compact-action"
@@ -104,7 +119,7 @@ export function CompactSummary({ date, events, onDay, onEvent, onEdit, onChoose,
           data-testid="month-more"
           onClick={event => onMore(date, event.currentTarget)}
         >
-          +{overflow} more
+          {monthOverflowLabel(hiddenPublished, hiddenPending)}
         </button>
       ) : <button type="button" className="school-compact-action" onClick={() => onDay(date)}>Open day agenda</button>}
     </section>
@@ -166,28 +181,34 @@ export function DatePopover({ popup, rootRef, events, onClose, onDay, onMove, on
         </button>
       </header>
       <div className="school-popover-events">
-        {events.map(event => (
-          <div className="school-popover-event" key={event.id} data-testid="popover-event">
-            <button
-              type="button"
-              className="school-popover-summary"
-              onClick={() => onMove ? onMove(event) : onDay(date)}
-              aria-label={`${onMove ? 'Move ' : ''}${event.title}, ${formatTime(event.time)}${event.location ? `, ${event.location}` : ''}`}
-              data-drag-event={onMove ? event.id : undefined}
-            >
-              {onMove && <span className="school-popover-grip" aria-hidden="true"><GripVertical /></span>}
-              <time data-testid="event-time" dateTime={`${date}T${event.time}`}>{formatTime(event.time)}</time>
-              <span className="school-popover-event-details">
-                <strong>
-                  <EventImage image={event.image} draggable={false} className="school-event-image school-event-image-small" />
-                  <span data-testid="event-title">{event.title}</span>
-                </strong>
-                {event.location && <span className="school-popover-location" data-testid="event-location">{event.location}</span>}
-              </span>
-            </button>
-            <EditButton event={event} onEdit={onEdit} />
-          </div>
-        ))}
+        {events.map(event => {
+          const pending = event.status === 'pending'
+          const time = formatTime(event.time)
+          const summary = [onMove ? `Move ${event.title}` : event.title, time, event.location, pending && 'Pending request'].filter(Boolean).join(', ')
+          return (
+            <div className={`school-popover-event${pending ? ' school-popover-pending' : ''}`} key={event.id} data-testid="popover-event">
+              <button
+                type="button"
+                className="school-popover-summary"
+                onClick={() => onMove ? onMove(event) : onDay(date)}
+                aria-label={summary}
+                data-drag-event={onMove ? event.id : undefined}
+              >
+                {onMove && <span className="school-popover-grip" aria-hidden="true"><GripVertical /></span>}
+                <time data-testid="event-time" dateTime={`${date}T${event.time}`}>{time}</time>
+                <span className="school-popover-event-details">
+                  <strong>
+                    <EventImage image={event.image} draggable={false} className="school-event-image school-event-image-small" />
+                    <span data-testid="event-title">{event.title}</span>
+                  </strong>
+                  {event.location && <span className="school-popover-location" data-testid="event-location">{event.location}</span>}
+                  {pending && <PendingLabel />}
+                </span>
+              </button>
+              <EditButton event={event} onEdit={onEdit} />
+            </div>
+          )
+        })}
       </div>
       <footer className="school-popover-footer">
         <button type="button" className="school-calendar-link" onClick={() => onDay(date)}>Open day agenda</button>
