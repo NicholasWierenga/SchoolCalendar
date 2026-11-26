@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { Clock, GripVertical, MapPin, Pencil, X } from 'lucide-react'
 import EventImage from '../../components/EventImage'
-import { formatDay, formatTime, formatTimeParts } from './calendarDates'
+import { dailyCapacity, formatDay, formatTime, formatTimeParts, publishedCount } from './calendarDates'
 import { monthOverflowLabel, monthPreview } from './monthPreview'
 
 function EditButton({ event, onEdit, small = false }) {
@@ -24,12 +24,12 @@ function EditButton({ event, onEdit, small = false }) {
 export function MonthEvent({ event, single, onActivate, onChoose, onEdit }) {
   const pending = event.status === 'pending'
   const time = formatTime(event.time)
-  const summary = [time, event.title, event.location, pending && 'Pending approval'].filter(Boolean).join(' · ')
+  const summary = [time, event.title, event.location, pending ? 'Pending approval' : 'Published'].filter(Boolean).join(' · ')
   return (
-    <div className="school-month-item" data-testid="calendar-event">
+    <div className={`school-month-item${pending ? ' school-month-pending' : ''}`} data-testid="calendar-event">
       <button
         type="button"
-        className={`school-month-summary${single ? ' school-month-single' : ''}${pending ? ' school-month-pending' : ''}`}
+        className={`school-month-summary${single ? ' school-month-single' : ''}`}
         onClick={() => onActivate(event)}
         title={summary}
         aria-label={summary}
@@ -64,8 +64,13 @@ function PendingLabel() {
 }
 
 export function DayAgenda({ date, events, isApprover, onEdit, loading }) {
+  const published = publishedCount(events)
+  const countLabel = isApprover
+    ? `${published} of ${dailyCapacity} published · ${events.length - published} pending`
+    : `${events.length} scheduled ${events.length === 1 ? 'event' : 'events'}`
   return (
     <section className="school-agenda" aria-label="Daily agenda" aria-busy={loading} data-testid={loading ? undefined : 'day-view'} data-date={date}>
+      <p className="school-agenda-count">{!loading && countLabel}</p>
       {events.map((event, index) => {
         const { clock, period } = formatTimeParts(event.time)
         const pending = event.status === 'pending'
@@ -134,11 +139,11 @@ export function DatePopover({ popup, rootRef, events, onClose, onDay, onMove, on
   useLayoutEffect(() => {
     const panel = panelRef.current
     const root = rootRef.current
+    const note = root.querySelector('.school-calendar-note')
     const position = () => {
       const rootBox = root.getBoundingClientRect()
       const triggerBox = trigger.getBoundingClientRect()
-      const note = root.querySelector('.school-calendar-note[data-visible="true"]')
-      const bottom = (note?.getBoundingClientRect().top ?? rootBox.bottom) - rootBox.top
+      const bottom = (note.dataset.visible === 'true' ? note.getBoundingClientRect().top : rootBox.bottom) - rootBox.top
       panel.style.maxHeight = Math.max(0, bottom - 16) + 'px'
       const panelBox = panel.getBoundingClientRect()
       const maxLeft = root.clientWidth - panelBox.width - 8
@@ -155,6 +160,7 @@ export function DatePopover({ popup, rootRef, events, onClose, onDay, onMove, on
     const observer = new ResizeObserver(position)
     observer.observe(root)
     observer.observe(panel)
+    observer.observe(note)
     return () => {
       observer.disconnect()
       trigger.setAttribute('aria-expanded', 'false')
@@ -184,7 +190,7 @@ export function DatePopover({ popup, rootRef, events, onClose, onDay, onMove, on
         {events.map(event => {
           const pending = event.status === 'pending'
           const time = formatTime(event.time)
-          const summary = [onMove ? `Move ${event.title}` : event.title, time, event.location, pending && 'Pending request'].filter(Boolean).join(', ')
+          const summary = [onMove ? `Move ${event.title}` : event.title, time, event.location, pending ? 'Pending request' : 'Published'].filter(Boolean).join(', ')
           return (
             <div className={`school-popover-event${pending ? ' school-popover-pending' : ''}`} key={event.id} data-testid="popover-event">
               <button

@@ -11,7 +11,18 @@ import { monthOverflowLabel, monthPreview } from './monthPreview'
 
 const plugins = [dayGridPlugin, classicTheme]
 const dayHeaderFormat = { weekday: 'short' }
+const shortWeekday = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: 'UTC' })
+const narrowWeekday = new Intl.DateTimeFormat('en-US', { weekday: 'narrow', timeZone: 'UTC' })
 const eventOrder = 'previewOrder,start,title,id'
+
+function weekdayLabel({ date }) {
+  return (
+    <>
+      <span className="school-weekday-short">{shortWeekday.format(date)}</span>
+      <span className="school-weekday-narrow">{narrowWeekday.format(date)}</span>
+    </>
+  )
+}
 
 function markDay({ el }) {
   el.dataset.testid = 'month-day'
@@ -113,6 +124,8 @@ export default memo(function MonthGrid({
         }}
         dayHeaderFormat={dayHeaderFormat}
         dayHeaderClass="school-weekday"
+        dayHeaderInnerClass="school-weekday-caption"
+        dayHeaderContent={weekdayLabel}
         dayRowClass="school-week"
         dayCellClass={({ date, dow, isOther }) => {
           const key = dateKey(date)

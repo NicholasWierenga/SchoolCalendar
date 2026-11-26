@@ -89,7 +89,7 @@ export default function useCalendarDrag({ rootRef, enabled, month, records, onSt
       const gesture = gestureRef.current
       const root = rootRef.current
       if (!gesture || gesture.pointerId !== event.pointerId || !root) return
-      const cell = gesture.started && hit(root, event.clientX, event.clientY, '[data-testid="month-day"]')
+      const cell = gesture.started ? hit(root, event.clientX, event.clientY, '[data-testid="month-day"]') : null
       if (gesture.started && event.cancelable) event.preventDefault()
       end(gesture, cell?.dataset.date ?? null)
     }

@@ -1,5 +1,5 @@
 .school-calendar {
-  --calendar-event-height: 32px;
+  --calendar-event-height: 34px;
   --calendar-week-height: calc(46px + 2 * var(--calendar-event-height));
   --calendar-weekend: color-mix(in srgb, var(--surface) 55%, var(--paper));
   --calendar-published-border: #78a38b;
@@ -12,6 +12,9 @@
   min-width: 0;
   color: var(--ink);
 }
+
+/* Keep the grid width steady when switching between a short month and a long agenda. */
+html:has(.school-calendar) { scrollbar-gutter: stable; }
 
 .school-calendar button { font: inherit; color: inherit; }
 .school-calendar button:focus-visible,
@@ -44,11 +47,6 @@
   letter-spacing: -.04em;
 }
 
-.school-day-total { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
-.school-month-key { display: flex; flex-wrap: wrap; gap: 5px 14px; margin-top: 6px; color: var(--muted); font-size: 12px; }
-.school-month-key span { display: inline-flex; align-items: center; gap: 4px; padding-left: 5px; border-left: 2px solid var(--calendar-published-border); }
-.school-month-key .school-month-key-pending { border-color: var(--calendar-pending-border); border-left-style: dashed; color: var(--calendar-pending-ink); }
-
 .school-calendar-tools,
 .school-calendar-arrows,
 .school-calendar-toggle {
@@ -74,11 +72,10 @@
   cursor: pointer;
 }
 
-.school-calendar-toggle button { min-height: 30px; padding: 4px 12px; font-size: 13px; }
+.school-calendar-toggle button { min-height: 30px; padding: 4px 12px; font-size: 13px; font-weight: 650; }
 .school-calendar-toggle button[aria-pressed="true"] {
   background: var(--paper);
   color: var(--forest);
-  font-weight: 650;
   box-shadow: 0 1px 3px #10271b22;
 }
 
@@ -107,6 +104,8 @@
 
 .school-month { min-width: 0; }
 .school-month .school-weekday {
+  block-size: 24px;
+  justify-content: center;
   background: var(--surface);
   color: var(--muted);
   font-size: 10px;
@@ -114,6 +113,8 @@
   letter-spacing: .08em;
   text-transform: uppercase;
 }
+.school-month .school-weekday-caption { font-size: 14px; line-height: 20px; }
+.school-weekday-narrow { display: none; }
 
 .school-month .school-week {
   flex: 0 0 var(--calendar-week-height) !important;
@@ -133,7 +134,7 @@
 .school-month .school-drop-ready { background: var(--leaf); box-shadow: inset 0 0 0 2px var(--forest); }
 .school-month .school-drop-full { background: #faeedb; box-shadow: inset 0 0 0 2px var(--gold); }
 
-.school-month .school-date-heading { height: 24px; min-height: 0; padding: 1px 5px 0; }
+.school-month .school-date-heading { flex: none; height: 24px; min-height: 0; padding: 1px 5px 0; }
 .school-month .school-date-number {
   color: inherit;
   min-width: 24px;
@@ -170,62 +171,70 @@
 
 .school-month .school-fc-event-marker { display: none !important; }
 .school-month .school-more-link {
-  margin: 1px 2px 3px;
+  /* FullCalendar measures the event stack after mount. Use the cell's reserved overflow space from the first frame. */
+  position: absolute !important;
+  inset-inline-start: 0;
+  inset-block-end: 0;
+  margin: 1px 2px;
   padding: 2px 3px;
   border-radius: 4px;
   color: var(--forest);
   font-size: 11.5px;
   font-weight: 650;
+  line-height: 1.15;
   text-decoration: none;
 }
 
+.school-month .school-more-link-content { font: inherit; }
 .school-more-link:hover { background: var(--surface); }
 
 .school-month .school-more-link:has(.school-more-breakdown) {
   min-width: 0;
   color: var(--calendar-pending-ink);
-  line-height: 1.15;
 }
 
 .school-month .school-more-link:has(.school-more-breakdown) .school-more-link-content {
   min-width: 0;
-  font: inherit;
   white-space: normal;
   overflow-wrap: anywhere;
 }
 
-.school-month-item {
+.school-month-item,
+.school-popover-event {
+  --event-outline: solid var(--calendar-published-border);
+  --event-fill: color-mix(in srgb, var(--leaf) 50%, var(--paper));
+  --event-hover: var(--leaf);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: 3px;
   min-width: 0;
+  border: 1px var(--event-outline);
+  background: var(--event-fill);
+}
+.school-month-item {
+  border-inline-start-width: 2px;
+  border-radius: 4px;
+}
+.school-month-pending,
+.school-popover-pending {
+  --event-outline: dashed var(--calendar-pending-border);
+  --event-fill: var(--calendar-pending-background);
+  --event-hover: color-mix(in srgb, var(--calendar-pending-background) 88%, var(--calendar-pending-border));
 }
 
 .school-calendar .school-month-summary {
   display: block;
   min-width: 0;
   width: 100%;
-  padding: 0 2px 0 5px;
+  padding: 0 1px 0 5px;
   border: 0;
-  border-left: 2px solid var(--calendar-published-border);
-  border-radius: 0 4px 4px 0;
+  border-radius: inherit;
   background: transparent;
   line-height: 1.18;
   text-align: left;
   cursor: pointer;
 }
 
-.school-calendar .school-month-summary:hover { background: color-mix(in srgb, var(--leaf) 50%, transparent); }
-.school-calendar .school-month-summary.school-month-pending {
-  border: 1px dashed var(--calendar-pending-border);
-  border-left-width: 2px;
-  border-radius: 4px;
-  background: var(--calendar-pending-background);
-}
-
-.school-calendar .school-month-summary.school-month-pending:hover {
-  background: color-mix(in srgb, var(--calendar-pending-background) 88%, var(--calendar-pending-border));
-}
+.school-calendar .school-month-summary:hover { background: var(--event-hover); }
 
 .school-month-line { display: flex; align-items: baseline; gap: 4px; }
 .school-month-single .school-month-line { flex-wrap: wrap; row-gap: 0; }
@@ -264,9 +273,9 @@
 .school-month-location {
   display: block;
   min-height: 13px;
-  overflow: hidden;
   color: var(--muted);
   font-size: 11px;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -290,14 +299,21 @@
 
 .school-calendar .school-edit-event:is(:hover, :focus-visible) {
   border-color: var(--line);
-  background: var(--leaf);
+  background: var(--event-hover, var(--leaf));
 }
 
 .school-edit-event svg { width: 14px; height: 14px; stroke-width: 1.8; }
-.school-calendar .school-edit-small { width: 24px; height: 24px; }
+.school-calendar .school-edit-small { align-self: center; width: 24px; height: 24px; }
 .school-edit-small svg { width: 12px; height: 12px; }
 
-.school-agenda { border-top: 1px solid var(--line); }
+.school-agenda-count {
+  box-sizing: content-box;
+  min-height: 1lh;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+}
 .school-agenda-event {
   display: grid;
   grid-template-columns: 83px minmax(0, 1fr);
@@ -404,14 +420,12 @@
 }
 
 .school-popover-event {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   padding-right: 4px;
-  border-bottom: 1px solid var(--line);
+  margin: 4px;
+  border-radius: 5px;
 }
 
-.school-popover-event:last-child { border-bottom: 0; }
 .school-calendar .school-popover-summary {
   display: grid;
   grid-template-columns: 65px minmax(0, 1fr);
@@ -419,34 +433,23 @@
   gap: 7px;
   min-width: 0;
   width: 100%;
-  padding: 5px 12px;
+  padding: 5px 12px 5px 7px;
   border: 0;
-  border-radius: 0;
-  background: var(--paper);
+  border-radius: inherit;
+  background: transparent;
   text-align: left;
   line-height: 1.18;
   cursor: pointer;
 }
 
 .school-calendar .school-popover-summary[data-drag-event] { grid-template-columns: 12px 65px minmax(0, 1fr); }
-.school-calendar .school-popover-summary:is(:hover, :focus-visible) { background: var(--surface); }
+.school-calendar .school-popover-summary:is(:hover, :focus-visible) { background: var(--event-hover); }
 .school-popover-grip { display: grid; align-self: stretch; place-items: center; }
 .school-popover-grip svg { width: 12px; height: 14px; color: var(--muted); }
 .school-popover-summary time { color: var(--forest); font-size: 11.5px; font-weight: 650; font-variant-numeric: tabular-nums; }
 .school-popover-event-details { overflow-wrap: anywhere; }
 .school-popover-event-details strong { font-size: 13px; }
 .school-popover-location { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
-.school-popover-event.school-popover-pending {
-  margin: 4px;
-  border: 1px dashed var(--calendar-pending-border);
-  border-radius: 5px;
-  background: var(--calendar-pending-background);
-}
-
-.school-calendar .school-popover-pending .school-popover-summary { padding-left: 7px; border-radius: 5px; background: transparent; }
-.school-calendar .school-popover-pending .school-popover-summary:is(:hover, :focus-visible) {
-  background: color-mix(in srgb, var(--calendar-pending-background) 90%, var(--calendar-pending-border));
-}
 
 .school-popover-event > .school-edit-event { align-self: center; }
 .school-popover-header, .school-popover-footer { flex-shrink: 0; }
@@ -517,7 +520,7 @@
 .school-compact-summary { margin-top: 14px; }
 .school-compact-summary h3 { margin-bottom: 7px; }
 .school-compact-summary > p { margin: 5px 0; color: var(--muted); font-size: 13px; }
-.school-compact-summary .school-month-item { align-items: center; padding-block: 5px; border-bottom: 1px solid var(--line); }
+.school-compact-summary .school-month-item + .school-month-item { margin-top: 8px; }
 .school-compact-summary .school-month-summary { min-height: 36px; }
 .school-compact-summary .school-month-title { font-size: 13px; }
 .school-compact-summary .school-month-line time { min-width: 64px; font-size: 12px; }
@@ -563,7 +566,7 @@
 }
 
 @container (600px < width <= 950px) {
-  .school-month { --calendar-event-height: 43px; --calendar-week-height: calc(46px + 2 * var(--calendar-event-height)); }
+  .school-month { --calendar-event-height: 45px; --calendar-week-height: calc(48px + 2 * var(--calendar-event-height)); }
   .school-month-line { flex-direction: column; align-items: start; gap: 0; }
   .school-month-title { max-width: 100%; }
 }
@@ -587,6 +590,10 @@
 }
 
 @container (max-width: 420px) {
+  .school-month .school-weekday { block-size: 16px; }
+  .school-month .school-weekday-caption { font-size: 11px; line-height: 12px; }
+  .school-month .school-weekday-short { display: none; }
+  .school-month .school-weekday-narrow { display: inline; }
   .school-calendar-heading { flex-direction: column; align-items: start; }
 }
 

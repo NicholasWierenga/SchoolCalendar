@@ -31,6 +31,32 @@ async function signIn(page, { login, password }) {
 
 const dayCell = (page, date) => page.locator('[data-testid="month-day"][data-date="' + date + '"]')
 
+for (const [source, openDay] of [
+  ['date cell click', day => day.getByTestId('open-day').click()],
+  ['event click', day => day.getByTestId('event-title').click()],
+  ['event Enter key', day => day.getByRole('button', { name: /Author Visit.*Published/ }).press('Enter')],
+]) {
+  test(`opens the daily agenda without browser errors from a month ${source}`, async ({ page }) => {
+    const browserErrors = []
+    page.on('console', message => {
+      if (message.type() === 'error') browserErrors.push(`[console] ${message.text()}`)
+    })
+    page.on('pageerror', error => browserErrors.push(error.stack ?? error.message))
+
+    const date = '2027-04-02'
+    try {
+      await openDay(dayCell(page, date))
+
+      const agenda = page.getByTestId('day-view')
+      await expect(agenda).toBeVisible()
+      await expect(agenda).toHaveAttribute('data-date', date)
+      await expect(agenda.getByTestId('event-title')).toHaveText(['Author Visit'])
+    } finally {
+      expect.soft(browserErrors).toEqual([])
+    }
+  })
+}
+
 test('month navigation keeps the selected date only when its cell is visible', async ({ page }) => {
   await dayCell(page, '2027-04-01').getByTestId('open-day').click()
   await page.getByTestId('show-month').click()
@@ -45,11 +71,98 @@ test('month navigation keeps the selected date only when its cell is visible', a
   await expect(dayCell(page, '2027-04-30')).toHaveClass(/school-month-selected/)
 })
 
+async function expectMonthToEndWithContent(lastContent) {
+  await expect(lastContent).toBeVisible()
+  await expect.poll(() => lastContent.evaluate(element => {
+    const contentBottom = element.getBoundingClientRect().bottom + window.scrollY
+    const bottomPaddingAllowance = 48
+    const expectedPageHeight = Math.max(window.innerHeight, contentBottom + bottomPaddingAllowance)
+    return document.documentElement.scrollHeight - expectedPageHeight
+  })).toBeLessThanOrEqual(1)
+}
+
+test('Month scroll ends at the last content on desktop and compact screens', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 950 })
+  await expectMonthToEndWithContent(page.getByTestId('month-view'))
+
+  await page.setViewportSize({ width: 390, height: 640 })
+  await expectMonthToEndWithContent(page.getByRole('region', { name: /^Events for / }))
+})
+
+test('opening a short day agenda keeps the calendar heading in place', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 640 })
+  const heading = page.getByRole('heading', { level: 1 })
+  const headingTop = () => heading.evaluate(element => element.getBoundingClientRect().top)
+  const agenda = page.getByTestId('day-view')
+
+  for (const [date, titles] of [['2027-04-01', []], ['2027-04-02', ['Author Visit']]]) {
+    for (const [source, trigger] of [
+      ['date cell', dayCell(page, date).getByTestId('open-day')],
+      ['Day button', page.getByTestId('show-day')],
+    ]) {
+      await test.step(`Open ${date} from the ${source}`, async () => {
+        await page.evaluate(() => window.scrollTo(0, 110))
+        await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(110)
+        await expect(trigger).toBeInViewport({ ratio: 1 })
+        const before = await headingTop()
+
+        await trigger.click()
+        await expect(agenda).toHaveAttribute('data-date', date)
+        await expect(agenda.getByTestId('event-title')).toHaveText(titles)
+        expect.soft(Math.abs((await headingTop()) - before)).toBeLessThanOrEqual(2)
+
+        await page.getByTestId('show-month').click()
+        await expectMonthToEndWithContent(page.getByTestId('month-view'))
+        await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(110)
+      })
+    }
+  }
+})
+
 async function center(locator) {
   const bounds = await locator.boundingBox()
   if (!bounds) throw new Error('The drag target is not visible.')
   return [bounds.x + bounds.width / 2, bounds.y + bounds.height / 2]
 }
+
+test('a busy month cell stays in place from the first visible frame after returning from Day', async ({ page }) => {
+  for (const width of [1200, 390]) {
+    await page.setViewportSize({ width, height: 640 })
+    await page.getByTestId('show-day').click()
+    await expect(page.getByTestId('day-view').getByTestId('calendar-event')).toHaveCount(10)
+    const monthButton = page.getByTestId('show-month')
+    await monthButton.evaluate((button, width) => {
+      const offset = width === 390 ? window.scrollY + button.getBoundingClientRect().top - 8 : 95
+      window.scrollTo(0, offset)
+    }, width)
+    await expect(monthButton).toBeInViewport({ ratio: 1 })
+    const before = await page.locator('#school-calendar-period').evaluate(el => el.getBoundingClientRect().top)
+
+    const frames = await monthButton.evaluate(async button => {
+      button.click()
+      const frames = []
+      for (let i = 0; i < 16; i++) {
+        await new Promise(requestAnimationFrame)
+        const cell = document.querySelector('[data-testid="month-day"][data-date="2027-04-16"]')
+        const y = element => element && getComputedStyle(element).visibility === 'visible'
+          ? element.getBoundingClientRect().top : null
+        frames.push({
+          heading: y(document.querySelector('#school-calendar-period')),
+          date: y(cell?.querySelector('[data-testid="open-day"]')),
+          event: y(cell?.querySelector('[data-testid="event-title"]')),
+          more: y(cell?.querySelector('[data-testid="month-more"]')),
+        })
+      }
+      return frames
+    })
+    expect(Math.abs(frames.at(-1).heading - before)).toBeLessThanOrEqual(1)
+    for (const item of width === 390 ? ['heading', 'date'] : ['heading', 'date', 'event', 'more']) {
+      const positions = frames.map(frame => frame[item]).filter(y => y !== null)
+      expect(positions.length, item).toBeGreaterThan(1)
+      expect(Math.max(...positions) - Math.min(...positions), item).toBeLessThanOrEqual(1)
+    }
+  }
+})
 
 function monthOverflowGeometry(link) {
   const cell = link.closest('[data-testid="month-day"]').getBoundingClientRect()
@@ -74,6 +187,34 @@ function monthOverflowGeometry(link) {
     linkFits: fits(link.getBoundingClientRect()),
     textFits: visibleText.length > 0 && visibleText.every(fits),
   }
+}
+
+async function expectMonthEventRow(scope, title, status, borderStyle) {
+  const row = scope.getByTestId('calendar-event').filter({ hasText: title })
+  const summary = row.getByRole('button', { name: new RegExp(`${title}.*${status}`, 'i') })
+  const edit = row.getByRole('button', { name: `Edit ${title}`, exact: true })
+  await expect(row).toHaveCSS('border-top-style', borderStyle)
+  await expect(summary.locator('svg')).toHaveCount(status === 'Published' ? 0 : 1)
+  await expect(edit).toBeVisible()
+  await expect.poll(() => row.evaluate(element => {
+    const rowBounds = element.getBoundingClientRect()
+    const editBounds = element.querySelector('[data-testid="event-edit"]').getBoundingClientRect()
+    const style = getComputedStyle(element)
+    const tolerance = 0.5
+    const summaryContent = element.querySelectorAll(
+      '[data-testid="event-drag-handle"], [data-testid="event-time"], [data-testid="event-title"], [data-testid="event-location"]',
+    )
+    return {
+      editInside: editBounds.left >= rowBounds.left + parseFloat(style.borderLeftWidth) - tolerance
+        && editBounds.right <= rowBounds.right - parseFloat(style.borderRightWidth) + tolerance
+        && editBounds.top >= rowBounds.top + parseFloat(style.borderTopWidth) - tolerance
+        && editBounds.bottom <= rowBounds.bottom - parseFloat(style.borderBottomWidth) + tolerance,
+      textClear: Array.from(summaryContent).every(part => part.getBoundingClientRect().right <= editBounds.left + tolerance),
+    }
+  }), { message: `Edit button fits beside the ${title} summary inside its row` }).toEqual({
+    editInside: true,
+    textClear: true,
+  })
 }
 
 test('move a hidden session across months, edit it, and undo only the edit', async ({ page }) => {
@@ -166,13 +307,14 @@ test.describe('pending requests on the calendar', () => {
     const day = dayCell(page, monthDate)
     const previewTitles = ['Morning Cleanup', 'Stage Crew']
     await expect(day.getByTestId('event-title')).toHaveText(previewTitles)
-    await expect(day.getByRole('button', { name: /Morning Cleanup.*Pending approval/i })).toBeVisible()
 
     const busyDay = dayCell(page, agendaDate)
     await expect(busyDay.getByTestId('event-title')).toHaveText(['Morning assembly', 'Art workshop'])
     const mixedOverflow = busyDay.getByTestId('month-more')
     for (const width of [1200, 900]) {
       await page.setViewportSize({ width, height: 950 })
+      await expectMonthEventRow(day, 'Morning Cleanup', 'Pending approval', 'dashed')
+      await expectMonthEventRow(day, 'Stage Crew', 'Published', 'solid')
       await expect(mixedOverflow).toHaveText('6 more published · 3 pending')
       await expect.poll(() => mixedOverflow.evaluate(monthOverflowGeometry), {
         message: `Mixed overflow fits inside the day cell at ${width}px`,
@@ -195,6 +337,13 @@ test.describe('pending requests on the calendar', () => {
     const compact = page.getByRole('region', { name: /Events for .*April 15/ })
     await expect(compact.getByTestId('event-title')).toHaveText(previewTitles)
     await expect(compact.getByTestId('month-more')).toHaveText('+1 pending')
+    await expectMonthEventRow(compact, 'Morning Cleanup', 'Pending approval', 'dashed')
+    await expectMonthEventRow(compact, 'Stage Crew', 'Published', 'solid')
+    await compact.getByRole('button', { name: 'Edit Stage Crew', exact: true }).click()
+    const editor = page.getByRole('dialog', { name: 'Edit event' })
+    await expect(editor.getByLabel('Event title')).toHaveValue('Stage Crew')
+    await editor.getByRole('button', { name: 'Cancel', exact: true }).click()
+    await expect(editor).toBeHidden()
   })
 
   test('lists both statuses in time order and counts only published events toward capacity', async ({ page }) => {

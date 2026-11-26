@@ -39,6 +39,21 @@ export default function Calendar({ user, onEdit, refreshKey, lastChange, onMove,
 
   useEffect(() => { onDateChange?.(date) }, [date, onDateChange])
 
+  useLayoutEffect(() => {
+    // A shorter view only needs enough document height to keep the current scroll offset.
+    function preserveScrollPosition() {
+      const offset = window.scrollY
+      document.body.style.minHeight = offset > 0 ? `calc(100dvh + ${offset}px)` : ''
+    }
+
+    preserveScrollPosition()
+    window.addEventListener('scroll', preserveScrollPosition, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', preserveScrollPosition)
+      document.body.style.removeProperty('min-height')
+    }
+  }, [])
+
   const closePopup = useCallback((restoreFocus = false) => {
     if (restoreFocus && popup?.trigger.isConnected) popup.trigger.focus({ preventScroll: true })
     setPopup(null)
@@ -215,7 +230,7 @@ export default function Calendar({ user, onEdit, refreshKey, lastChange, onMove,
       onKeyDown={handleEscape}
     >
       <CalendarToolbar
-        date={date} month={month} mode={mode} arrow={drag?.arrow} events={eventsToday} isApprover={isApprover} loading={loading}
+        date={date} month={month} mode={mode} arrow={drag?.arrow}
         onNavigate={navigate} onModeChange={changeMode}
       />
 
