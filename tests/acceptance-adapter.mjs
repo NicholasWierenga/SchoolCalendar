@@ -1,5 +1,7 @@
 import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -10,22 +12,27 @@ const run = promisify(execFile);
 const hostDirectory = fileURLToPath(new URL('./SchoolCalendar.AcceptanceHost/', import.meta.url));
 const serverDirectory = fileURLToPath(new URL('../SchoolCalendar.Server/', import.meta.url));
 const hostName = 'SchoolCalendar.AcceptanceHost';
-const artifactsDirectory = resolve(hostDirectory, 'obj', 'acceptance');
-const hostAssembly = resolve(artifactsDirectory, 'bin', hostName, 'debug', `${hostName}.dll`);
 const replyPrefix = 'SchoolCalendar fixture ';
-let buildHost;
+let hostBuild;
 
-function prepareHost() {
-  buildHost ??= run('dotnet', [
-    'build', `${hostName}.csproj`, '--configuration', 'Debug', '--artifacts-path', artifactsDirectory,
-    '--nologo', '--verbosity', 'quiet',
-  ], { cwd: hostDirectory, timeout: 60_000 }).catch(error => {
-    throw new Error(`Could not build the acceptance host.\n${error.stdout ?? ''}${error.stderr ?? ''}`);
+async function buildHost() {
+  // SQL Server's native DLL needs a short path. Each runner also needs its own unlocked build output.
+  const artifactsDirectory = mkdtempSync(resolve(tmpdir(), 'sc-host-'));
+  process.once('exit', () => {
+    rmSync(artifactsDirectory, { recursive: true, force: true, maxRetries: 3 });
   });
-  return buildHost;
+  try {
+    await run('dotnet', [
+      'build', `${hostName}.csproj`, '--configuration', 'Debug', '--artifacts-path', artifactsDirectory,
+      '--nologo', '--verbosity', 'quiet',
+    ], { cwd: hostDirectory, timeout: 60_000 });
+  } catch (error) {
+    throw new Error(`Could not build the acceptance host.\n${error.stdout ?? ''}${error.stderr ?? ''}`);
+  }
+  return resolve(artifactsDirectory, 'bin', hostName, 'debug', `${hostName}.dll`);
 }
 
-function launchHost(database) {
+function launchHost(hostAssembly, database) {
   const child = spawn('dotnet', [hostAssembly, 'serve', database], {
     cwd: serverDirectory,
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -67,17 +74,17 @@ function launchHost(database) {
   return {
     async exchange(command) {
       if (exited || activeReply) throw new Error('Acceptance host cannot receive another fixture command.');
+      let timeout;
       try {
-        return await Promise.race([
-          new Promise((resolve, reject) => {
-            activeReply = { resolve, reject };
-            child.stdin.write(`${command}\n`);
-          }),
-          delay(45_000, undefined, { ref: false }).then(() => {
-            throw new Error(`Acceptance host did not reply.\n${diagnostics.join('\n')}`);
-          }),
-        ]);
+        return await new Promise((resolve, reject) => {
+          activeReply = { resolve, reject };
+          timeout = setTimeout(() => {
+            reject(new Error(`Acceptance host did not reply.\n${diagnostics.join('\n')}`));
+          }, 45_000).unref();
+          child.stdin.write(`${command}\n`);
+        });
       } finally {
+        clearTimeout(timeout);
         activeReply = undefined;
       }
     },
@@ -106,28 +113,26 @@ function driverAt(address) {
     const data = body ? JSON.parse(body) : undefined;
     if (response.ok) return { response, result: { status: 'ok', value: data } };
 
-    const expected = {
+    const status = {
       400: 'invalid',
       401: 'unauthenticated',
       403: 'forbidden',
       404: 'not_found',
       409: data?.code === 'capacity' ? 'capacity' : 'conflict',
     }[response.status];
-    if (!expected) throw new Error(`${method} ${path} returned ${response.status}. ${body}`);
-    return { response, result: { status: expected } };
+    if (!status) throw new Error(`${method} ${path} returned ${response.status}. ${body}`);
+    return { response, result: { status } };
   }
 
   async function api(session, method, path, input) {
     const { result } = await request(session, method, path, input);
-    if (result.status === 'ok' && result.value) {
-      if (Array.isArray(result.value)) {
-        result.value = result.value.map(contractRecord);
-      } else {
-        result.value = contractRecord(result.value);
-      }
-    }
-    return result;
+    if (result.status !== 'ok' || !result.value) return result;
+
+    const value = Array.isArray(result.value) ? result.value.map(contractRecord) : contractRecord(result.value);
+    return { ...result, value };
   }
+
+  const updateEvent = (session, id, patch) => api(session, 'PATCH', `/events/${id}`, patch);
 
   return {
     async signIn(input) {
@@ -148,8 +153,8 @@ function driverAt(address) {
     createEvent: (session, input) => api(session, 'POST', '/events', input),
     listCalendar: (session, { date }) => api(session, 'GET', `/events?from=${date}&to=${date}`),
     listPending: session => api(session, 'GET', '/events/pending'),
-    updateEvent: (session, id, patch) => api(session, 'PATCH', `/events/${id}`, patch),
-    moveEvent: (session, id, patch) => api(session, 'PATCH', `/events/${id}`, patch),
+    updateEvent,
+    moveEvent: updateEvent,
     approveEvent: (session, id) => api(session, 'POST', `/events/${id}/approve`, {}),
     deleteEvent: (session, id) => api(session, 'DELETE', `/events/${id}`),
   };
@@ -160,7 +165,8 @@ function contractRecord({ version, isOwn, ...record }) {
 }
 
 async function startFixture(approver, seedDemoData) {
-  await prepareHost();
+  hostBuild ??= buildHost();
+  const hostAssembly = await hostBuild;
   const database = `SchoolCalendarTest_${randomUUID().replaceAll('-', '')}`;
   let host;
   let address;
@@ -168,7 +174,7 @@ async function startFixture(approver, seedDemoData) {
 
   async function restartBackend() {
     await host?.stop();
-    host = launchHost(database);
+    host = launchHost(hostAssembly, database);
     ({ address } = await host.exchange(JSON.stringify({ approver, seedDemoData })));
     driver = driverAt(address);
     return driver;

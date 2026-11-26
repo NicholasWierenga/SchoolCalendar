@@ -6,6 +6,7 @@ namespace SchoolCalendar.AcceptanceHost;
 
 public sealed class TestDatabase
 {
+    private readonly string name;
     private readonly SqlConnectionStringBuilder server;
 
     public TestDatabase(string name)
@@ -15,7 +16,7 @@ public sealed class TestDatabase
             throw new ArgumentException("Expected a disposable test database name.", nameof(name));
         }
 
-        Name = name;
+        this.name = name;
         server = new SqlConnectionStringBuilder(
             Environment.GetEnvironmentVariable("SCHOOLCALENDAR_TEST_SQL_CONNECTION") ??
             @"Server=(localdb)\MSSQLLocalDB;Integrated Security=true;TrustServerCertificate=true")
@@ -26,11 +27,9 @@ public sealed class TestDatabase
         };
     }
 
-    public string Name { get; }
-
     public string ConnectionString => new SqlConnectionStringBuilder(server.ConnectionString)
     {
-        InitialCatalog = Name
+        InitialCatalog = name
     }.ConnectionString;
 
     public static TestDatabase Create() => new($"SchoolCalendarTest_{Guid.NewGuid():N}");
@@ -43,11 +42,11 @@ public sealed class TestDatabase
         command.CommandText = $"""
             IF DB_ID(@name) IS NOT NULL
             BEGIN
-              ALTER DATABASE [{Name}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
-              DROP DATABASE [{Name}];
+              ALTER DATABASE [{name}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+              DROP DATABASE [{name}];
             END
             """;
-        command.Parameters.AddWithValue("@name", Name);
+        command.Parameters.AddWithValue("@name", name);
         await command.ExecuteNonQueryAsync();
     }
 
@@ -85,13 +84,14 @@ public sealed class TestDatabase
             var row = new Dictionary<string, object?>();
             for (var index = 0; index < reader.FieldCount; index++)
             {
-                var name = reader.GetName(index);
-                row[name] = reader.GetValue(index) switch
+                var column = reader.GetName(index);
+                var value = reader.GetValue(index);
+                row[column] = value switch
                 {
                     DBNull => null,
-                    DateTime date when name == "date" => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                    TimeSpan time when name == "time" => time.ToString(@"hh\:mm", CultureInfo.InvariantCulture),
-                    _ => reader.GetValue(index)
+                    DateTime date when column == "date" => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    TimeSpan time when column == "time" => time.ToString(@"hh\:mm", CultureInfo.InvariantCulture),
+                    _ => value
                 };
             }
 

@@ -14,13 +14,15 @@ export function eventFields(event) {
   }
 }
 
-export function changedFields(before, after) {
-  return Object.fromEntries(Object.entries(after).filter(([key, value]) => before[key] !== value))
+export function changedEventFields(event, values) {
+  const before = eventFields(event)
+  return Object.fromEntries(Object.entries(values).filter(([key, value]) => before[key] !== value))
 }
 
-export function localSchedule(event) {
-  const date = new Date(event.date + 'T' + event.time + ':00Z')
-  return date.toLocaleString('en-US', {
+export function formatEventSchedule({ date, time }) {
+  // Event dates and times are stored without a time zone.
+  const schedule = new Date(`${date}T${time}:00Z`)
+  return schedule.toLocaleString('en-US', {
     timeZone: 'UTC',
     month: 'short',
     day: 'numeric',

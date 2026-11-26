@@ -1,33 +1,16 @@
-import { useState } from 'react'
+import FormError from './FormError'
 import Modal from './Modal'
+import { useDialogAction } from './useDialogAction'
 
 export default function ConfirmDelete({ title, name, onConfirm, onClose }) {
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  async function remove() {
-    setBusy(true)
-    try {
-      await onConfirm()
-      onClose()
-    } catch (err) {
-      setError(err.message)
-      setBusy(false)
-    }
-  }
-  const close = () => {
-    if (!busy) onClose()
-  }
+  const { busy, error, close, run } = useDialogAction(onClose, { clearErrorOnRetry: false })
   return (
     <Modal title={title} onClose={close}>
       <div className="form-body">
         <p>
           Delete <strong>{name}</strong>?
         </p>
-        {error && (
-          <p role="alert" className="form-error">
-            {error}
-          </p>
-        )}
+        <FormError>{error}</FormError>
       </div>
       <footer className="form-actions">
         <button type="button" disabled={busy} onClick={close} autoFocus>
@@ -37,7 +20,7 @@ export default function ConfirmDelete({ title, name, onConfirm, onClose }) {
           type="button"
           className="danger"
           disabled={busy}
-          onClick={remove}
+          onClick={() => run(onConfirm)}
           data-testid="confirm-delete"
         >
           {busy ? 'Deleting…' : 'Delete'}

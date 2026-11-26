@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { openFixture } from '../../tests/acceptance-adapter.mjs'
+import { setupSuiteFixture, signIn } from './helpers.js'
 
 const approver = {
   login: 'directorytester',
@@ -8,23 +8,7 @@ const approver = {
   lastName: 'Lane',
 }
 const secondApprover = { login: 'approver', password: 'Calendar1!' }
-let fixture
-
-test.beforeAll(async () => {
-  fixture = await openFixture({ approver })
-})
-
-test.afterAll(async () => {
-  await fixture?.cleanup()
-})
-
-async function signIn(page, { login, password } = approver) {
-  await page.goto(fixture.address)
-  await page.getByLabel('Login name').fill(login)
-  await page.getByLabel('Password', { exact: true }).fill(password)
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-  await expect(page.getByTestId('month-view')).toBeVisible()
-}
+const getFixture = setupSuiteFixture(approver)
 
 function navigate(page, name) {
   return page.getByRole('navigation').getByRole('button', { name, exact: true }).click()
@@ -38,9 +22,12 @@ const locationRow = (page, name) => page.getByRole('row').filter({
 })
 
 test('keeps a stale user draft and preserves the newer access level after retry', async ({ page, browser }) => {
+  const { address } = getFixture()
   const other = await browser.newPage()
   try {
-    await signIn(page)
+    await page.goto(address)
+    await signIn(page, approver)
+    await other.goto(address)
     await signIn(other, secondApprover)
     await navigate(page, 'Users')
     await navigate(other, 'Users')
@@ -90,7 +77,8 @@ test('shows a location rename on its existing event and blocks deletion while in
   const eventLocation = page.getByTestId('month-view').getByTestId('calendar-event').filter({
     has: page.getByText('Author Visit', { exact: true }),
   }).getByTestId('event-location')
-  await signIn(page)
+  await page.goto(getFixture().address)
+  await signIn(page, approver)
   await expect(eventLocation).toHaveText(originalName)
 
   await navigate(page, 'Locations')

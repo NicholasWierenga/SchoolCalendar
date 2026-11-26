@@ -1,4 +1,4 @@
-import { monthEventLimit } from './calendarDates.js'
+export const monthEventLimit = 2
 
 export function monthPreview(orderedEvents) {
   const published = orderedEvents.filter(event => event.status !== 'pending')

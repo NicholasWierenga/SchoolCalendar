@@ -19,8 +19,8 @@ public static class UserEndpoints
         users.MapDelete("/{id:int}", DeleteAsync);
     }
 
-    private static async Task<UserResponse[]> ListAsync(CalendarDbContext db, CancellationToken cancellationToken) =>
-        await db.Users.AsNoTracking().Where(user => !user.IsDeleted)
+    private static Task<UserResponse[]> ListAsync(CalendarDbContext db, CancellationToken cancellationToken) =>
+        db.Users.AsNoTracking().Where(user => !user.IsDeleted)
             .OrderBy(user => user.LastName).ThenBy(user => user.FirstName).ThenBy(user => user.Id)
             .Select(user => new UserResponse(user.Id, user.Login, user.FirstName, user.MiddleName, user.LastName, user.Role)
             {
@@ -35,8 +35,7 @@ public static class UserEndpoints
         Apply(new JsonInput(body), user, hasher, creating: true);
         db.Users.Add(user);
         await SaveAsync(db, cancellationToken);
-        var response = UserResponse.From(user) with { Version = user.Version };
-        return Results.Json(response, statusCode: StatusCodes.Status201Created);
+        return Results.Json(UserResponse.From(user, includeVersion: true), statusCode: StatusCodes.Status201Created);
     }
 
     private static async Task<UserResponse> UpdateAsync(
@@ -56,7 +55,7 @@ public static class UserEndpoints
 
         await SaveAsync(db, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return UserResponse.From(user) with { Version = user.Version };
+        return UserResponse.From(user, includeVersion: true);
     }
 
     private static async Task<IResult> DeleteAsync(
@@ -82,11 +81,7 @@ public static class UserEndpoints
     private static async Task<CalendarUser> FindAsync(int id, CalendarDbContext db, CancellationToken cancellationToken)
     {
         // Cookie validation may have tracked this account before the write lock was acquired.
-        var tracked = db.Users.Local.SingleOrDefault(user => user.Id == id);
-        if (tracked is not null)
-        {
-            db.Entry(tracked).State = EntityState.Detached;
-        }
+        db.Users.Local.FindEntry(id)?.State = EntityState.Detached;
 
         return await db.Users.SingleOrDefaultAsync(user => user.Id == id && !user.IsDeleted, cancellationToken)
             ?? throw ApiFailure.NotFound("The user");

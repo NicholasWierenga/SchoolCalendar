@@ -32,6 +32,9 @@ public sealed record UserResponse(
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public byte[]? Version { get; init; }
 
-    public static UserResponse From(CalendarUser user) =>
-        new(user.Id, user.Login, user.FirstName, user.MiddleName, user.LastName, user.Role);
+    public static UserResponse From(CalendarUser user, bool includeVersion = false) =>
+        new(user.Id, user.Login, user.FirstName, user.MiddleName, user.LastName, user.Role)
+        {
+            Version = includeVersion ? user.Version : null
+        };
 }

@@ -8,14 +8,10 @@ public sealed partial class CalendarApiTests
     [Fact]
     public async Task CalendarMarksPublishedEventsForTheTeacherWhoSubmittedThem()
     {
-        using var admin = await SignInAsync(Administrator.Login, Administrator.Password);
+        using var admin = await SignInAsApproverAsync();
         var (teacherClient, teacherId) = await CreateTeacherAsync(admin);
         using var teacher = teacherClient;
-        await ReadAsync<User>(await admin.PostAsJsonAsync("/api/users", new
-        {
-            login = "teacher2", password = "Tch!2028", firstName = "Avery", lastName = "Ng", role = "normal",
-        }));
-        using var otherTeacher = await SignInAsync("teacher2", "Tch!2028");
+        using var otherTeacher = (await CreateTeacherAsync(admin, "teacher2")).Client;
 
         var directlyPublished = await CreateEventAsync(admin, "Staff event", Date, "08:00");
         var submission = await CreateEventAsync(teacher, "Science fair", Date, "09:00");

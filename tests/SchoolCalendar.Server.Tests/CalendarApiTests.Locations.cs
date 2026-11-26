@@ -8,9 +8,8 @@ public sealed partial class CalendarApiTests
     [Fact]
     public async Task LocationRenameAppearsOnPendingAndPublishedEvents()
     {
-        using var admin = await SignInAsync(Administrator.Login, Administrator.Password);
-        var (teacherClient, _) = await CreateTeacherAsync(admin);
-        using var teacher = teacherClient;
+        using var admin = await SignInAsApproverAsync();
+        using var teacher = (await CreateTeacherAsync(admin)).Client;
         var location = await CreateDirectoryLocationAsync(admin);
         var pending = await CreateLocatedEventAsync(teacher, location.Id, "Pending workshop", "09:00");
         var published = await CreateLocatedEventAsync(admin, location.Id, "Published workshop", "10:00");
@@ -35,9 +34,8 @@ public sealed partial class CalendarApiTests
     [InlineData(true)]
     public async Task LocationDeletePreservesReferences(bool published)
     {
-        using var admin = await SignInAsync(Administrator.Login, Administrator.Password);
-        var (teacherClient, _) = await CreateTeacherAsync(admin);
-        using var teacher = teacherClient;
+        using var admin = await SignInAsApproverAsync();
+        using var teacher = (await CreateTeacherAsync(admin)).Client;
         var location = await CreateDirectoryLocationAsync(admin);
         var entry = await CreateLocatedEventAsync(published ? admin : teacher, location.Id, "Linked workshop", "09:00");
         var path = $"/api/locations/{location.Id}";
@@ -63,7 +61,7 @@ public sealed partial class CalendarApiTests
     [Fact]
     public async Task LocationWritesRejectStaleOrInvalidVersions()
     {
-        using var admin = await SignInAsync(Administrator.Login, Administrator.Password);
+        using var admin = await SignInAsApproverAsync();
         var location = await CreateDirectoryLocationAsync(admin);
         var path = $"/api/locations/{location.Id}";
         Assert.Equal(8, Convert.FromBase64String(location.Version).Length);

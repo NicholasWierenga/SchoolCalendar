@@ -1,29 +1,27 @@
-export async function api(path, options = {}) {
-  const { body, headers, ...settings } = options
+export async function api(path, { method = 'GET', body, signal } = {}) {
   const response = await fetch('/api' + path, {
-    credentials: 'same-origin',
-    ...settings,
-    headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...headers },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    method,
+    signal,
+    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   })
   const role = response.headers.get('X-Calendar-Role')
-  if (role && path !== '/session' && !settings.signal?.aborted) {
+  if (role && path !== '/session' && !signal?.aborted) {
     window.dispatchEvent(new CustomEvent('session-role', { detail: role }))
   }
   if (response.status === 204) return null
-  const content = await response.text()
-  let data
-  try {
-    data = content ? JSON.parse(content) : null
-  } catch {
-    data = null
-  }
-  if (!response.ok) {
-    const error = new Error(data?.message || 'The request could not be completed. Please try again.')
-    error.status = response.status
-    error.code = data?.code
-    if (response.status === 401 && path !== '/session') window.dispatchEvent(new Event('session-expired'))
+  const data = await response.json().catch(error => {
+    // Empty responses and HTML error pages have no JSON body.
+    if (error instanceof SyntaxError) return null
     throw error
+  })
+  if (response.ok) return data
+
+  if (response.status === 401 && path !== '/session' && !signal?.aborted) {
+    window.dispatchEvent(new Event('session-expired'))
   }
-  return data
+  const error = new Error(data?.message || 'The request could not be completed. Please try again.')
+  error.status = response.status
+  error.code = data?.code
+  throw error
 }

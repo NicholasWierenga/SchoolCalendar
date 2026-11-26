@@ -1,31 +1,30 @@
-import { useState } from 'react'
+import FormError from '../../components/FormError'
 import Modal from '../../components/Modal'
+import { useDialogAction } from '../../components/useDialogAction'
+
+function NameField({ part, label, record, required = false }) {
+  const name = part + 'Name'
+  return (
+    <label>
+      {label}
+      <input name={name} defaultValue={record?.[name]} required={required} data-testid={`user-${part}-input`} />
+    </label>
+  )
+}
 
 export default function DirectoryForm({ kind, record, onSave, onReload, onClose }) {
   const isUser = kind === 'user'
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  async function save(e) {
-    e.preventDefault()
+  const { busy, error, close, run } = useDialogAction(onClose)
+  function save(event) {
+    event.preventDefault()
     if (busy) return
-    const fields = Object.fromEntries(new FormData(e.currentTarget))
+    const fields = Object.fromEntries(new FormData(event.currentTarget))
     if (isUser) {
       fields.role = fields.approver ? 'approver' : 'normal'
       delete fields.approver
       if (record && !fields.password) delete fields.password
     }
-    setBusy(true)
-    setError('')
-    try {
-      await onSave(fields)
-      onClose()
-    } catch (err) {
-      setError(err.message)
-      setBusy(false)
-    }
-  }
-  const close = () => {
-    if (!busy) onClose()
+    return run(() => onSave(fields))
   }
   return (
     <Modal title={(record ? 'Edit ' : 'Add ') + kind} onClose={close}>
@@ -59,33 +58,10 @@ export default function DirectoryForm({ kind, record, onSave, onReload, onClose 
                 />
               </label>
               <div className="form-pair">
-                <label>
-                  First name
-                  <input
-                    name="firstName"
-                    defaultValue={record?.firstName}
-                    required
-                    data-testid="user-first-input"
-                  />
-                </label>
-                <label>
-                  Middle name
-                  <input
-                    name="middleName"
-                    defaultValue={record?.middleName}
-                    data-testid="user-middle-input"
-                  />
-                </label>
+                <NameField part="first" label="First name" record={record} required />
+                <NameField part="middle" label="Middle name" record={record} />
               </div>
-              <label>
-                Last name
-                <input
-                  name="lastName"
-                  defaultValue={record?.lastName}
-                  required
-                  data-testid="user-last-input"
-                />
-              </label>
+              <NameField part="last" label="Last name" record={record} required />
               <label className="check-field">
                 <input
                   type="checkbox"
@@ -108,11 +84,7 @@ export default function DirectoryForm({ kind, record, onSave, onReload, onClose 
               />
             </label>
           )}
-          {error && (
-            <p className="form-error" role="alert">
-              {error}
-            </p>
-          )}
+          <FormError>{error}</FormError>
           {onReload && (
             <button type="button" disabled={busy} onClick={onReload}>
               Discard my edits and load latest
@@ -123,7 +95,7 @@ export default function DirectoryForm({ kind, record, onSave, onReload, onClose 
           <button type="button" disabled={busy} onClick={close} data-testid="cancel-form">
             Cancel
           </button>
-          <button className="primary" disabled={busy} data-testid="save-form">
+          <button type="submit" className="primary" disabled={busy} data-testid="save-form">
             {busy ? 'Saving…' : 'Save ' + kind}
           </button>
         </footer>

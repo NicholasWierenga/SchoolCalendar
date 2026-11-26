@@ -1,28 +1,14 @@
-import { useState } from 'react'
 import { Check } from 'lucide-react'
+import FormError from '../../components/FormError'
 import Modal from '../../components/Modal'
 import EventImage from '../../components/EventImage'
-import { localSchedule } from './eventFields'
+import { useDialogAction } from '../../components/useDialogAction'
+import { formatEventSchedule } from './eventFields'
 
-const stamp = (value) => new Date(value).toLocaleString()
+const formatTimestamp = (value) => new Date(value).toLocaleString()
 
 export default function EventDetails({ event, onClose, onApprove, onEdit, onDelete }) {
-  const [approving, setApproving] = useState(false)
-  const [approvalError, setApprovalError] = useState('')
-  async function approve() {
-    setApproving(true)
-    setApprovalError('')
-    try {
-      await onApprove(event)
-      onClose()
-    } catch (err) {
-      setApprovalError(err.message)
-      setApproving(false)
-    }
-  }
-  const close = () => {
-    if (!approving) onClose()
-  }
+  const { busy: approving, error, close, run } = useDialogAction(onClose)
   function openAction(action) {
     onClose()
     action(event)
@@ -32,10 +18,10 @@ export default function EventDetails({ event, onClose, onApprove, onEdit, onDele
     <Modal title={event.title} onClose={close}>
       <div className="form-body" data-testid="event-detail">
         <EventImage image={event.image} />
-        {event.description && <p className="event-description">{event.description}</p>}
+        {event.description && <p>{event.description}</p>}
         <dl className="detail-grid">
           <dt>When</dt>
-          <dd>{localSchedule(event)}</dd>
+          <dd>{formatEventSchedule(event)}</dd>
           <dt>Location</dt>
           <dd>{event.location || 'No location'}</dd>
           <dt>Status</dt>
@@ -43,21 +29,17 @@ export default function EventDetails({ event, onClose, onApprove, onEdit, onDele
           <dt>Created by</dt>
           <dd data-testid="event-creator">{event.creatorName}</dd>
           <dt>Created</dt>
-          <dd>{stamp(event.createdAt)}</dd>
+          <dd>{formatTimestamp(event.createdAt)}</dd>
           {event.approvedAt && (
             <>
               <dt>Approved by</dt>
               <dd data-testid="event-approver">{event.approverName}</dd>
               <dt>Approved</dt>
-              <dd>{stamp(event.approvedAt)}</dd>
+              <dd>{formatTimestamp(event.approvedAt)}</dd>
             </>
           )}
         </dl>
-        {approvalError && (
-          <p className="form-error" role="alert">
-            {approvalError}
-          </p>
-        )}
+        <FormError>{error}</FormError>
         <footer className="form-actions event-detail-actions">
           {onDelete && (
             <button type="button" className="event-detail-delete" disabled={approving} onClick={() => openAction(onDelete)}>
@@ -76,7 +58,7 @@ export default function EventDetails({ event, onClose, onApprove, onEdit, onDele
             <button
               type="button"
               className="primary"
-              onClick={approve}
+              onClick={() => run(() => onApprove(event))}
               disabled={approving}
               data-testid="approve-detail"
             >

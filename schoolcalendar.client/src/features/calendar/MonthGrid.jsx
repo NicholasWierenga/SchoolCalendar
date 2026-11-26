@@ -1,13 +1,13 @@
-import { memo, useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import FullCalendar from '@fullcalendar/react'
 import dayGridPlugin from '@fullcalendar/react/daygrid'
 import classicTheme from '@fullcalendar/react/themes/classic'
 import '@fullcalendar/react/skeleton.css'
 import '@fullcalendar/react/themes/classic/theme.css'
 import '@fullcalendar/react/themes/classic/palette.css'
-import { MonthEvent } from './CalendarViews'
-import { dateKey, formatDay, monthEventLimit } from './calendarDates'
-import { monthOverflowLabel, monthPreview } from './monthPreview'
+import { MonthEvent } from './CalendarEvent'
+import { dateKey, formatDay } from './calendarDates'
+import { monthEventLimit, monthOverflowLabel, monthPreview } from './monthPreview'
 
 const plugins = [dayGridPlugin, classicTheme]
 const dayHeaderFormat = { weekday: 'short' }
@@ -58,7 +58,7 @@ function MonthMoreLabel({ count, previews }) {
   )
 }
 
-export default memo(function MonthGrid({
+export default function MonthGrid({
   month, selectedDate, byDate, compact, loading, dropDate, dropFull,
   onDate, onEvent, onEdit, onChoose, onMore,
 }) {
@@ -98,7 +98,7 @@ export default memo(function MonthGrid({
       onClick={event => {
         const target = event.target
         if (target.closest('button, [role="button"], [role="link"]')) return
-        const cell = target.closest('[data-testid="month-day"]')
+        const cell = target.closest('.school-month-cell')
         if (cell) onDate(cell.dataset.date)
       }}
     >
@@ -170,4 +170,32 @@ export default memo(function MonthGrid({
       />
     </div>
   )
-})
+}
+
+export function CompactSummary({ date, events, onDay, onEvent, onEdit, onChoose, onMore, expanded, loading }) {
+  const { visible, hidden, hiddenPublished, hiddenPending } = monthPreview(events)
+  const dayLabel = formatDay(date)
+  return (
+    <section className="school-compact-summary" aria-label={`Events for ${dayLabel}`}>
+      <h3>{dayLabel}</h3>
+      {visible.map(event => (
+        <MonthEvent key={event.id} event={event} onActivate={onEvent} onChoose={onChoose} onEdit={onEdit} />
+      ))}
+      {!events.length && !loading && <p>No events scheduled.</p>}
+      {hidden.length ? (
+        <button
+          type="button"
+          className="school-compact-action"
+          aria-haspopup="dialog"
+          aria-controls="school-date-events"
+          aria-expanded={expanded}
+          data-more-date={date}
+          data-testid="month-more"
+          onClick={event => onMore(date, event.currentTarget)}
+        >
+          {monthOverflowLabel(hiddenPublished, hiddenPending)}
+        </button>
+      ) : <button type="button" className="school-compact-action" onClick={() => onDay(date)}>Open day agenda</button>}
+    </section>
+  )
+}

@@ -1,3 +1,83 @@
+.detail-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 18px;
+  overflow-wrap: anywhere;
+}
+.detail-grid dt {
+  color: var(--muted);
+}
+.detail-grid dd {
+  margin: 0;
+}
+
+.event-form-actions {
+  flex-wrap: wrap;
+}
+
+.event-form-error {
+  margin: 8px 20px;
+}
+
+.form-body > .event-image {
+  width: 38px;
+  height: 38px;
+}
+.event-image-select,
+.event-image-select::picker(select) {
+  appearance: base-select;
+}
+.event-image-select::picker(select) {
+  margin-block: 3px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink);
+}
+.event-image-select selectedcontent {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.event-image-select option {
+  gap: 8px;
+  padding: 6px 8px;
+}
+.event-image-select option:checked {
+  background: var(--leaf);
+}
+.event-image-select .event-image {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+.upload-field {
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  font-size: 13px;
+}
+.upload-field legend {
+  padding: 0;
+  margin-bottom: 5px;
+  font-weight: 600;
+}
+.upload-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+.upload-controls button {
+  flex: none;
+}
+.upload-controls [role='status'] {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 .event-groups {
   display: grid;
   gap: 20px;

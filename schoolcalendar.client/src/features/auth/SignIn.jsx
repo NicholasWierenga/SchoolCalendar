@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { ArrowRight } from 'lucide-react'
 import { api } from '../../api'
+import FormError from '../../components/FormError'
 import SchoolBrand from '../../components/SchoolBrand'
+import './signIn.css'
 
 export default function SignIn({ onSignIn }) {
   const [error, setError] = useState('')
@@ -61,11 +63,7 @@ export default function SignIn({ onSignIn }) {
                 {showPassword ? 'Hide password' : 'Show password'}
               </button>
             </div>
-            {error && (
-              <p className="form-error" role="alert">
-                {error}
-              </p>
-            )}
+            <FormError>{error}</FormError>
             <button className="primary login-submit" disabled={busy} data-testid="sign-in-submit">
               {busy ? 'Signing in…' : 'Sign in'} <ArrowRight size={17} />
             </button>

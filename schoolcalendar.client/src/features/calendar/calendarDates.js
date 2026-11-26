@@ -3,8 +3,6 @@ const dayOptions = { weekday: 'long', month: 'long', day: 'numeric' }
 const shortDayOptions = { weekday: 'short', month: 'short', day: 'numeric' }
 
 export const initialDate = '2027-04-16'
-export const monthEventLimit = 2
-export const dailyCapacity = 10
 
 function dateObject(date) {
   return new Date(`${date}T12:00:00Z`)
@@ -56,22 +54,4 @@ export function formatTimeParts(time) {
 export function formatTime(time) {
   const { clock, period } = formatTimeParts(time)
   return `${clock} ${period}`
-}
-
-export function groupEvents(events) {
-  const byDate = new Map()
-  for (const event of events) {
-    if (!byDate.has(event.date)) byDate.set(event.date, [])
-    byDate.get(event.date).push(event)
-  }
-  for (const day of byDate.values()) {
-    day.sort((a, b) => a.time.localeCompare(b.time)
-      || Number(a.status === 'pending') - Number(b.status === 'pending')
-      || a.title.localeCompare(b.title) || a.id - b.id)
-  }
-  return byDate
-}
-
-export function publishedCount(events) {
-  return events.filter(event => event.status === 'approved').length
 }

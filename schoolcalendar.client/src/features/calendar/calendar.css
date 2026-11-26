@@ -6,7 +6,6 @@
   --calendar-pending-ink: #725016;
   --calendar-pending-border: var(--gold);
   --calendar-pending-background: #fffaee;
-  --fc-neutral-bg-color: var(--paper);
   container-type: inline-size;
   position: relative;
   min-width: 0;
@@ -52,9 +51,10 @@ html:has(.school-calendar) { scrollbar-gutter: stable; }
 .school-calendar-toggle {
   display: flex;
   align-items: center;
-  gap: 3px;
 }
 
+.school-calendar-arrows,
+.school-calendar-toggle { gap: 3px; }
 .school-calendar-tools { gap: 10px; }
 
 .school-calendar-toggle {
@@ -221,31 +221,32 @@ html:has(.school-calendar) { scrollbar-gutter: stable; }
   --event-hover: color-mix(in srgb, var(--calendar-pending-background) 88%, var(--calendar-pending-border));
 }
 
-.school-calendar .school-month-summary {
-  display: block;
+.school-calendar .school-month-summary,
+.school-calendar .school-popover-summary {
   min-width: 0;
   width: 100%;
-  padding: 0 1px 0 5px;
   border: 0;
   border-radius: inherit;
   background: transparent;
   line-height: 1.18;
   text-align: left;
-  cursor: pointer;
 }
 
+.school-calendar .school-month-summary { display: block; padding: 0 1px 0 5px; }
 .school-calendar .school-month-summary:hover { background: var(--event-hover); }
 
 .school-month-line { display: flex; align-items: baseline; gap: 4px; }
 .school-month-single .school-month-line { flex-wrap: wrap; row-gap: 0; align-items: center; }
-.school-month-line time {
-  flex: none;
+.school-month-line time,
+.school-agenda-time,
+.school-popover-summary time {
   color: var(--forest);
-  font-size: 10.5px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
+.school-month-line time { flex: none; font-size: 10.5px; white-space: nowrap; }
+.school-agenda-time { font-size: 15px; white-space: nowrap; }
+.school-popover-summary time { font-size: 11.5px; }
 
 .school-month-pending-clock {
   width: 10px;
@@ -284,17 +285,17 @@ html:has(.school-calendar) { scrollbar-gutter: stable; }
 .school-event-image-small { width: 13px; height: 13px; border-radius: 2px; }
 
 .school-calendar .school-edit-event {
-    display: grid;
-    align-self: start;
-    width: 30px;
-    height: 100%;
-    place-items: center;
-    padding: 0;
-    border: 1px solid transparent;
-    border-radius: 5px;
-    background: transparent;
-    color: var(--forest);
-    cursor: pointer;
+  display: grid;
+  align-self: start;
+  width: 30px;
+  height: 100%;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--forest);
+  cursor: pointer;
 }
 
 .school-calendar .school-edit-event:is(:hover, :focus-visible) {
@@ -326,14 +327,6 @@ html:has(.school-calendar) { scrollbar-gutter: stable; }
 
 .school-agenda-event[data-more-at-start] { padding-bottom: 4px; border-color: transparent; }
 .school-agenda-event[data-more-at-start] + .school-agenda-event { padding-top: 4px; }
-
-.school-agenda-time {
-  color: var(--forest);
-  font-size: 15px;
-  font-weight: 650;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
 
 .school-agenda-time small { font-size: 10px; }
 .school-agenda-time-repeated,
@@ -459,22 +452,13 @@ html:has(.school-calendar) { scrollbar-gutter: stable; }
   grid-template-columns: 65px minmax(0, 1fr);
   align-items: center;
   gap: 7px;
-  min-width: 0;
-  width: 100%;
   padding: 5px 12px 5px 7px;
-  border: 0;
-  border-radius: inherit;
-  background: transparent;
-  text-align: left;
-  line-height: 1.18;
-  cursor: pointer;
 }
 
 .school-calendar .school-popover-summary[data-drag-event] { grid-template-columns: 12px 65px minmax(0, 1fr); }
 .school-calendar .school-popover-summary:is(:hover, :focus-visible) { background: var(--event-hover); }
 .school-popover-grip { display: grid; align-self: stretch; place-items: center; }
 .school-popover-grip svg { width: 12px; height: 14px; color: var(--muted); }
-.school-popover-summary time { color: var(--forest); font-size: 11.5px; font-weight: 650; font-variant-numeric: tabular-nums; }
 .school-popover-event-details { overflow-wrap: anywhere; }
 .school-popover-event-details strong { font-size: 13px; }
 .school-popover-location { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }

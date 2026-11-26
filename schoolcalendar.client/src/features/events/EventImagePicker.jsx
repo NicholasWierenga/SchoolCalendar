@@ -2,8 +2,11 @@ import { useId, useRef, useState } from 'react'
 import EventImage from '../../components/EventImage'
 import { builtInImages } from './eventFields'
 
+const imageTypes = ['image/png', 'image/jpeg', 'image/webp']
+const maxImageSize = 512 * 1024
+
 function readImage(file) {
-  if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 512 * 1024) {
+  if (!imageTypes.includes(file.type) || file.size > maxImageSize) {
     throw new Error('Choose a PNG, JPG or WebP image up to 512 KB.')
   }
   return new Promise((resolve, reject) => {
@@ -22,9 +25,10 @@ export default function EventImagePicker({ image, disabled, onChange, onReadingC
   )
 
   async function upload(event) {
-    const file = event.target.files[0]
+    const fileInput = event.currentTarget
+    const file = fileInput.files[0]
     if (!file) return
-    event.target.value = ''
+    fileInput.value = ''
     onReadingChange(true)
     onError('')
     try {
@@ -48,7 +52,7 @@ export default function EventImagePicker({ image, disabled, onChange, onReadingC
           disabled={disabled}
           onChange={(event) => {
             const choice = event.target.value
-            onChange(choice === 'upload' ? uploadedFile.data : choice || null)
+            onChange(choice === 'upload' ? uploadedFile?.data ?? null : choice || null)
           }}
         >
           <button type="button"><selectedcontent /></button>
@@ -78,7 +82,7 @@ export default function EventImagePicker({ image, disabled, onChange, onReadingC
           ref={input}
           type="file"
           hidden
-          accept="image/png,image/jpeg,image/webp"
+          accept={imageTypes.join(',')}
           disabled={disabled}
           onChange={upload}
           data-testid="event-image-input"

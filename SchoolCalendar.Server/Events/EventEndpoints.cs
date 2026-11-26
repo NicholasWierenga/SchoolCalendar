@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
@@ -19,11 +18,13 @@ public static class EventEndpoints
         events.MapGet("", ListCalendarAsync);
         events.MapPost("", CreateAsync);
         events.MapGet("/mine", ListMineAsync);
-        events.MapGet("/pending", ListPendingAsync).RequireAuthorization(Roles.Approver);
-        events.MapGet("/manage", ListAllAsync).RequireAuthorization(Roles.Approver);
-        events.MapMethods("/{id:int}", ["PUT", "PATCH"], UpdateAsync).RequireAuthorization(Roles.Approver);
-        events.MapDelete("/{id:int}", DeleteAsync).RequireAuthorization(Roles.Approver);
-        events.MapPost("/{id:int}/approve", ApproveAsync).RequireAuthorization(Roles.Approver);
+
+        var management = events.MapGroup("").RequireAuthorization(Roles.Approver);
+        management.MapGet("/pending", ListPendingAsync);
+        management.MapGet("/manage", ListAllAsync);
+        management.MapMethods("/{id:int}", ["PUT", "PATCH"], UpdateAsync);
+        management.MapDelete("/{id:int}", DeleteAsync);
+        management.MapPost("/{id:int}/approve", ApproveAsync);
     }
 
     private static Task<EventResponse[]> ListCalendarAsync(
@@ -123,30 +124,7 @@ public static class EventEndpoints
         int id, HttpContext http, CalendarDbContext db, TimeProvider clock,
         CancellationToken cancellationToken)
     {
-        string? version = null;
-        JsonInput? changes = null;
-        if (http.Features.Get<IHttpRequestBodyDetectionFeature>()?.CanHaveBody == true)
-        {
-            if (!http.Request.HasJsonContentType())
-            {
-                throw ApiFailure.Invalid("Send a JSON object.");
-            }
-
-            var body = await http.Request.ReadFromJsonAsync<JsonElement>(cancellationToken);
-            if (body.ValueKind != JsonValueKind.Null)
-            {
-                version = new JsonInput(body).NullableText("version");
-                if (body.TryGetProperty("changes", out var patch))
-                {
-                    changes = new JsonInput(patch);
-                    if (version is null)
-                    {
-                        throw ApiFailure.Invalid("The version field is required to edit and approve an event.");
-                    }
-                }
-            }
-        }
-
+        var (version, changes) = await ReadApprovalAsync(http, cancellationToken);
         await using var transaction = await DatabaseLock.AcquireAsync(db, EventWriteLock, cancellationToken);
         var entry = await FindAsync(id, db, cancellationToken);
         ApiFailure.CheckVersion(entry.Version, version);
@@ -165,6 +143,32 @@ public static class EventEndpoints
         await SaveAsync(db, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return EventResponse.From(entry);
+    }
+
+    private static async Task<(string? Version, JsonInput? Changes)> ReadApprovalAsync(
+        HttpContext http, CancellationToken cancellationToken)
+    {
+        if (http.Features.Get<IHttpRequestBodyDetectionFeature>()?.CanHaveBody != true)
+        {
+            return (null, null);
+        }
+        if (!http.Request.HasJsonContentType())
+        {
+            throw ApiFailure.Invalid("Send a JSON object.");
+        }
+
+        var body = await http.Request.ReadFromJsonAsync<JsonElement>(cancellationToken);
+        if (body.ValueKind == JsonValueKind.Null) return (null, null);
+
+        var version = new JsonInput(body).NullableText("version");
+        if (!body.TryGetProperty("changes", out var patch)) return (version, null);
+
+        var changes = new JsonInput(patch);
+        if (version is null)
+        {
+            throw ApiFailure.Invalid("The version field is required to edit and approve an event.");
+        }
+        return (version, changes);
     }
 
     private static async Task<IResult> DeleteAsync(
@@ -189,7 +193,7 @@ public static class EventEndpoints
             entry => entry.Status == EventStatus.Approved && entry.Date == date, cancellationToken);
         if (count >= DailyCapacity)
         {
-            throw ApiFailure.Capacity(date);
+            throw ApiFailure.Capacity(date, DailyCapacity);
         }
     }
 
@@ -198,10 +202,8 @@ public static class EventEndpoints
     {
         var title = input.Text("title", creating ? null : entry.Title);
         var description = input.Text("description", entry.Description);
-        var date = CalendarValidation.Date(input.Text("date",
-            creating ? null : entry.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
-        var time = CalendarValidation.Time(input.Text("time",
-            creating ? null : entry.Time.ToString("HH:mm", CultureInfo.InvariantCulture)));
+        var date = creating || input.Has("date") ? CalendarValidation.Date(input.Text("date")) : entry.Date;
+        var time = creating || input.Has("time") ? CalendarValidation.Time(input.Text("time")) : entry.Time;
         var locationId = input.LocationId(entry.LocationId);
         var image = input.NullableText("image", entry.Image);
 

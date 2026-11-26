@@ -12,13 +12,15 @@ public static class LocationEndpoints
     {
         var locations = api.MapGroup("/locations").RequireAuthorization();
         locations.MapGet("", ListAsync);
-        locations.MapPost("", CreateAsync).RequireAuthorization(Roles.Approver);
-        locations.MapMethods("/{id:int}", ["PUT", "PATCH"], UpdateAsync).RequireAuthorization(Roles.Approver);
-        locations.MapDelete("/{id:int}", DeleteAsync).RequireAuthorization(Roles.Approver);
+
+        var management = locations.MapGroup("").RequireAuthorization(Roles.Approver);
+        management.MapPost("", CreateAsync);
+        management.MapMethods("/{id:int}", ["PUT", "PATCH"], UpdateAsync);
+        management.MapDelete("/{id:int}", DeleteAsync);
     }
 
-    private static async Task<LocationResponse[]> ListAsync(CalendarDbContext db, CancellationToken cancellationToken) =>
-        await db.Locations.AsNoTracking().OrderBy(location => location.Name).ThenBy(location => location.Id)
+    private static Task<LocationResponse[]> ListAsync(CalendarDbContext db, CancellationToken cancellationToken) =>
+        db.Locations.AsNoTracking().OrderBy(location => location.Name).ThenBy(location => location.Id)
             .Select(location => new LocationResponse(location.Id, location.Name, Convert.ToBase64String(location.Version)))
             .ToArrayAsync(cancellationToken);
 

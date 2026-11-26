@@ -9,7 +9,7 @@ public sealed partial class CalendarApiTests
     [Fact]
     public async Task UserDirectoryProtectsTheLastActiveApprover()
     {
-        using var admin = await SignInAsync(Administrator.Login, Administrator.Password);
+        using var admin = await SignInAsApproverAsync();
         var original = Assert.Single(await ReadAsync<DirectoryUser[]>(await admin.GetAsync("/api/users")));
 
         using var blockedDemotion = await admin.PutAsJsonAsync($"/api/users/{original.Id}",
@@ -36,7 +36,7 @@ public sealed partial class CalendarApiTests
     [Fact]
     public async Task UserDirectoryRejectsStaleEditsAndDeletes()
     {
-        using var admin = await SignInAsync(Administrator.Login, Administrator.Password);
+        using var admin = await SignInAsApproverAsync();
         var created = await CreateDirectoryUserAsync(admin, "versioned1", "normal");
         Assert.Equal(8, Convert.FromBase64String(created.Version).Length);
 
@@ -63,11 +63,8 @@ public sealed partial class CalendarApiTests
     {
         var otherApprover = new TestApprover("approver2", "Second!8", "Ellis", "Hart");
         await using var otherHost = await TestCalendarHost.StartAsync(database, otherApprover);
-        using var firstAdmin = await SignInAsync(Administrator.Login, Administrator.Password);
-        using var otherAdmin = new HttpClient { BaseAddress = otherHost.Address, Timeout = TimeSpan.FromSeconds(20) };
-        using var signIn = await otherAdmin.PostAsJsonAsync("/api/session",
-            new { otherApprover.Login, otherApprover.Password });
-        Assert.True(signIn.IsSuccessStatusCode, await signIn.Content.ReadAsStringAsync());
+        using var firstAdmin = await SignInAsApproverAsync();
+        using var otherAdmin = await SignInAsync(otherApprover.Login, otherApprover.Password, otherHost.Address);
 
         var roster = await ReadAsync<DirectoryUser[]>(await firstAdmin.GetAsync("/api/users"));
         var first = Assert.Single(roster, user => user.Login == Administrator.Login);

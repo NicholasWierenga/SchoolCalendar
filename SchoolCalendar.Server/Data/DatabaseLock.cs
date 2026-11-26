@@ -22,14 +22,14 @@ internal static class DatabaseLock
                 """, cancellationToken);
             return transaction;
         }
-        catch (SqlException exception) when (exception.Number == 51000)
+        catch (Exception exception)
         {
             await transaction.DisposeAsync();
-            throw ApiFailure.Conflict("The calendar is busy. Try again.");
-        }
-        catch
-        {
-            await transaction.DisposeAsync();
+            if (exception is SqlException { Number: 51000 })
+            {
+                throw ApiFailure.Conflict("The calendar is busy. Try again.");
+            }
+
             throw;
         }
     }

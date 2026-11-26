@@ -1,6 +1,5 @@
-import { useEffect, useLayoutEffect, useState } from 'react'
-import { api } from '../../api'
-import { monthGridRange } from './calendarDates'
+import { useLayoutEffect, useState } from 'react'
+import { useList } from '../../components/useList'
 
 export const noEvents = []
 
@@ -15,21 +14,7 @@ export function useCompactCalendar(rootRef) {
   return compact
 }
 
-export function useMonthEvents(month, refreshKey, isApprover) {
-  const [response, setResponse] = useState(null)
-  const { from, to } = monthGridRange(month)
+export function useMonthEvents({ from, to }, refreshKey, isApprover) {
   const path = `${isApprover ? '/events/manage' : '/events'}?from=${from}&to=${to}`
-  const current = response?.path === path ? response : null
-  useEffect(() => {
-    const controller = new AbortController()
-    api(path, { signal: controller.signal })
-      .then(events => {
-        if (!controller.signal.aborted) setResponse({ path, events, error: null })
-      })
-      .catch(error => {
-        if (!controller.signal.aborted) setResponse({ path, error: error.message, events: noEvents })
-      })
-    return () => controller.abort()
-  }, [path, refreshKey])
-  return { events: current?.events ?? noEvents, loading: !current, error: current?.error }
+  return useList(path, refreshKey, { keepItemsOnRefresh: true })
 }

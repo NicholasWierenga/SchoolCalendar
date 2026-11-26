@@ -1,44 +1,56 @@
 import { test, expect } from '@playwright/test'
-import { openFixture } from '../../tests/acceptance-adapter.mjs'
+import { dayCell, dispatchWindowFocus, setupSuiteFixture, signIn, signOut } from './helpers.js'
 
 const manager = { login: 'rolemanager', password: 'Calendar2!', firstName: 'Terry', lastName: 'Cole' }
 const date = '2028-05-10'
-let fixture
+const getFixture = setupSuiteFixture(manager)
 let managerSession
 
 test.beforeAll(async () => {
-  fixture = await openFixture({ approver: manager })
-  const signIn = await fixture.driver.signIn(manager)
-  expect(signIn.status).toBe('ok')
-  managerSession = signIn.value.session
+  const result = await getFixture().driver.signIn(manager)
+  expect(result.status).toBe('ok')
+  managerSession = result.value.session
 })
 
-test.afterAll(async () => { await fixture?.cleanup() })
-
 async function openAccount(page, login, role) {
+  const { driver, address } = getFixture()
   const account = { login, password: 'Calendar3!', firstName: 'Alex', lastName: 'Park', role }
-  const created = await fixture.driver.createUser(managerSession, account)
+  const created = await driver.createUser(managerSession, account)
   expect(created.status).toBe('ok')
-  await page.goto(fixture.address)
-  await page.getByLabel('Login name').fill(login)
-  await page.getByLabel('Password', { exact: true }).fill(account.password)
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-  await expect(page.getByTestId('month-view')).toBeVisible()
+  await page.goto(address)
+  await signIn(page, account)
   return created.value.id
 }
 
 async function changeRole(id, role) {
-  const result = await fixture.driver.updateUser(managerSession, id, { role })
+  const result = await getFixture().driver.updateUser(managerSession, id, { role })
   expect(result.status).toBe('ok')
 }
 
 async function savedStatuses(title) {
-  const published = await fixture.driver.listCalendar(managerSession, { date })
-  const pending = await fixture.driver.listPending(managerSession)
+  const { driver } = getFixture()
+  const published = await driver.listCalendar(managerSession, { date })
+  const pending = await driver.listPending(managerSession)
   expect(published.status).toBe('ok')
   expect(pending.status).toBe('ok')
   return [...published.value, ...pending.value].filter(event => event.title === title).map(event => event.status)
 }
+
+test('retry restores the signed-in account after a temporary startup error', async ({ page }) => {
+  await page.goto(getFixture().address)
+  await signIn(page, manager)
+  await page.route('**/api/session', route => route.fulfill({
+    status: 503,
+    json: { message: 'Session temporarily unavailable.' },
+  }))
+  await page.reload()
+  await expect(page.getByRole('alert')).toHaveText('Session temporarily unavailable.')
+
+  await page.unroute('**/api/session')
+  await page.getByRole('button', { name: 'Try again' }).click()
+  await expect(page.getByTestId('month-view')).toBeVisible()
+  await expect(page.getByTestId('signed-in')).toContainText('Terry Cole')
+})
 
 test('toggles password visibility without submitting the sign-in form', async ({ page }) => {
   let signInRequests = 0
@@ -46,7 +58,7 @@ test('toggles password visibility without submitting the sign-in form', async ({
     if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/session') signInRequests++
   })
 
-  await page.goto(fixture.address)
+  await page.goto(getFixture().address)
   const password = page.getByLabel('Password', { exact: true })
   const show = page.getByRole('button', { name: 'Show password', exact: true })
   const hide = page.getByRole('button', { name: 'Hide password', exact: true })
@@ -69,7 +81,7 @@ test('toggles password visibility without submitting the sign-in form', async ({
   await expect(page.getByTestId('month-view')).toBeVisible()
   expect(signInRequests).toBe(1)
 
-  await page.getByRole('button', { name: 'Sign out', exact: true }).click()
+  await signOut(page)
   await expect(password).toHaveAttribute('type', 'password')
   await expect(password).toHaveValue('')
   await expect(show).toBeVisible()
@@ -122,13 +134,13 @@ test('updates the open calendar and management screens after another manager cha
 
 test('closes pending calendar details when an approver becomes a teacher', async ({ page }) => {
   const id = await openAccount(page, 'detailviewer', 'approver')
-  const day = page.locator('[data-testid="month-day"][data-date="2027-04-22"]')
+  const day = dayCell(page, '2027-04-22')
   await day.getByRole('button', { name: /Seedling Exchange.*Pending approval/ }).click()
   const details = page.getByRole('dialog', { name: 'Seedling Exchange' })
   await expect(details.getByRole('button', { name: 'Approve', exact: true })).toBeVisible()
 
   await changeRole(id, 'normal')
-  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await dispatchWindowFocus(page)
   await expect(details).toBeHidden()
   await expect(day.getByTestId('event-title')).toHaveText(['Earth Day Walk'])
   await day.getByRole('button', { name: /Earth Day Walk.*Published/ }).click()
@@ -146,7 +158,7 @@ test('returns from My Events to Calendar when a teacher becomes an approver', as
   await expect(heading).toBeVisible()
 
   await changeRole(id, 'approver')
-  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await dispatchWindowFocus(page)
   await expect(myEvents).toHaveCount(0)
   await expect(nav.getByRole('button', { name: 'Events', exact: true })).toBeVisible()
   await expect(heading).toHaveCount(0)
@@ -165,7 +177,7 @@ test('keeps the latest role when two session checks overlap', async ({ page }) =
     check.resolve(() => route.fulfill({ response }))
   })
 
-  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await dispatchWindowFocus(page)
   const releaseOldRole = await before.promise
   await changeRole(id, 'approver')
   await page.getByTestId('month-next').click()

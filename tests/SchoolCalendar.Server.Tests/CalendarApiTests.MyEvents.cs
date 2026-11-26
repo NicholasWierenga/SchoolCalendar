@@ -9,15 +9,12 @@ public sealed partial class CalendarApiTests
     public async Task MyEventsShowsOnlyTheSignedInTeachersSubmissionsBeforeAndAfterApproval()
     {
         const string mine = "/api/events/mine";
-        using var admin = await SignInAsync(Administrator.Login, Administrator.Password);
+        using var admin = await SignInAsApproverAsync();
         var (teacherClient, teacherId) = await CreateTeacherAsync(admin);
         using var teacher = teacherClient;
 
-        var otherAccount = await ReadAsync<User>(await admin.PostAsJsonAsync("/api/users", new
-        {
-            login = "teacher2", password = "Tch!2028", firstName = "Avery", lastName = "Ng", role = "normal",
-        }));
-        using var otherTeacher = await SignInAsync("teacher2", "Tch!2028");
+        var (otherTeacherClient, otherTeacherId) = await CreateTeacherAsync(admin, "teacher2");
+        using var otherTeacher = otherTeacherClient;
 
         Assert.Empty(await ReadAsync<CalendarEvent[]>(await teacher.GetAsync(mine)));
 
@@ -37,7 +34,7 @@ public sealed partial class CalendarApiTests
         Assert.Equal("pending", pending.Status);
         Assert.Equal("Gym", pending.Location);
         Assert.Equal(new[] { pending, later }, await ReadAsync<CalendarEvent[]>(
-            await teacher.GetAsync($"{mine}?creatorId={otherAccount.Id}")));
+            await teacher.GetAsync($"{mine}?creatorId={otherTeacherId}")));
         Assert.Equal(new[] { otherPending, otherApproved }, await ReadAsync<CalendarEvent[]>(await otherTeacher.GetAsync(mine)));
         Assert.Equal(new[] { direct, otherApproved }, await ReadAsync<CalendarEvent[]>(await teacher.GetAsync(CalendarPath(Date))));
 

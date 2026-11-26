@@ -1,18 +1,29 @@
-import { Check, Pencil, Trash2 } from 'lucide-react'
-import { localSchedule } from './eventFields'
+import { Check } from 'lucide-react'
+import FormError from '../../components/FormError'
+import RecordActions from '../../components/RecordActions'
+import { formatEventSchedule } from './eventFields'
 import { openEventFromRow } from './openEventFromRow'
-import './events.css'
+
+const eventGroups = [
+  { status: 'pending', title: 'Pending requests', emptyMessage: 'No events are waiting for approval.' },
+  { status: 'approved', title: 'Published events', emptyMessage: 'No published events yet.' },
+]
 
 function EventActions({ event, management, busy }) {
-  const { approving, problem, onApprove, onEdit, onDelete } = management
+  const { approvingId, approvalError, onApprove, onEdit, onDelete } = management
   return (
     <td className="event-actions-cell">
-      <div className="row-actions">
+      <RecordActions
+        name={event.title}
+        disabled={busy}
+        onEdit={() => onEdit(event)}
+        onDelete={() => onDelete(event)}
+      >
         {event.status === 'pending' && (
           <button
             type="button"
             className="approve-button"
-            disabled={approving !== null}
+            disabled={approvingId !== null}
             onClick={() => onApprove(event)}
             data-testid="approve-pending"
           >
@@ -20,29 +31,9 @@ function EventActions({ event, management, busy }) {
             {busy ? 'Approving…' : 'Approve'}
           </button>
         )}
-        <button
-          type="button"
-          className="icon-button"
-          aria-label={'Edit ' + event.title}
-          disabled={busy}
-          onClick={() => onEdit(event)}
-          data-testid="edit-record"
-        >
-          <Pencil size={16} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className="icon-button delete-icon"
-          aria-label={'Delete ' + event.title}
-          disabled={busy}
-          onClick={() => onDelete(event)}
-          data-testid="delete-record"
-        >
-          <Trash2 size={16} aria-hidden="true" />
-        </button>
-      </div>
-      {problem?.id === event.id && (
-        <p className="form-error event-approval-error" role="alert">{problem.message}</p>
+      </RecordActions>
+      {approvalError?.id === event.id && (
+        <FormError className="form-error event-approval-error">{approvalError.message}</FormError>
       )}
     </td>
   )
@@ -63,7 +54,7 @@ function EventTable({ rows, pending, onView, management }) {
         </thead>
         <tbody>
           {rows.map((event) => {
-            const busy = management?.approving === event.id
+            const busy = management?.approvingId === event.id
             return (
               <tr key={event.id} data-testid="event-record" aria-busy={busy || undefined} onClick={openEventFromRow}>
                 <th scope="row">
@@ -82,7 +73,7 @@ function EventTable({ rows, pending, onView, management }) {
                 </th>
                 <td>
                   <span className="event-mobile-label" aria-hidden="true">Scheduled for</span>
-                  {localSchedule(event)}
+                  {formatEventSchedule(event)}
                 </td>
                 <td>
                   <span className="event-mobile-label" aria-hidden="true">{personLabel}</span>
@@ -100,10 +91,6 @@ function EventTable({ rows, pending, onView, management }) {
 
 export default function EventList({ list: { items, loading, error }, personal, onView, management, children }) {
   const listId = personal ? 'my-events' : 'events'
-  const groups = [
-    { status: 'pending', title: 'Pending requests', rows: items.filter((event) => event.status === 'pending') },
-    { status: 'approved', title: 'Published events', rows: items.filter((event) => event.status === 'approved') },
-  ]
 
   return (
     <section className="content-page">
@@ -111,16 +98,12 @@ export default function EventList({ list: { items, loading, error }, personal, o
         <h1>{personal ? 'My Events' : 'Events'}</h1>
       </header>
       <div className="event-groups" data-testid={personal ? 'my-event-list' : 'event-list'} aria-busy={!!loading}>
-        {error && (
-          <p className="form-error" role="alert">
-            {error}
-          </p>
-        )}
+        <FormError>{error}</FormError>
         {loading && <p role="status">Loading…</p>}
-        {!loading &&
-          !error &&
-          groups.map(({ rows, status, title }) => {
-            const groupHeadingId = listId + '-' + status
+        {!loading && !error &&
+          eventGroups.map(({ status, title, emptyMessage }) => {
+            const rows = items.filter((event) => event.status === status)
+            const groupHeadingId = `${listId}-${status}`
             const pending = status === 'pending'
             return (
               <section
@@ -133,9 +116,7 @@ export default function EventList({ list: { items, loading, error }, personal, o
                   <span className="event-group-count">{rows.length}</span>
                 </header>
                 {rows.length === 0 ? (
-                  <p className="empty-state">
-                    {pending ? 'No events are waiting for approval.' : 'No published events yet.'}
-                  </p>
+                  <p className="empty-state">{emptyMessage}</p>
                 ) : (
                   <EventTable
                     rows={rows}

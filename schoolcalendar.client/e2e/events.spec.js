@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { Buffer } from 'node:buffer'
-import { openFixture } from '../../tests/acceptance-adapter.mjs'
+import { dayCell, dispatchWindowFocus, setupSuiteFixture, signIn, signOut, teacher } from './helpers.js'
 
 const approver = {
   login: 'eventtester',
@@ -8,19 +8,10 @@ const approver = {
   firstName: 'Robin',
   lastName: 'Lane',
 }
-const teacher = { login: 'teacher', password: 'Calendar1!' }
-let fixture
-
-test.beforeAll(async () => {
-  fixture = await openFixture({ approver })
-})
-
-test.afterAll(async () => {
-  await fixture?.cleanup()
-})
+const getFixture = setupSuiteFixture(approver)
 
 test.beforeEach(async ({ page }) => {
-  await page.goto(fixture.address)
+  await page.goto(getFixture().address)
 })
 
 const pendingRequests = (page) => page.getByRole('region', { name: 'Pending requests' })
@@ -34,20 +25,13 @@ const approveButton = (container) => container.getByRole('button', { name: /^App
 const saveAndApproveButton = (editor) => editor.getByRole('button', { name: 'Save and approve', exact: true })
 const saveChangesButton = (editor) => editor.getByRole('button', { name: 'Save changes', exact: true })
 
-async function signIn(page, { login, password } = approver) {
-  await page.getByLabel('Login name').fill(login)
-  await page.getByLabel('Password', { exact: true }).fill(password)
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-  await expect(page.getByTestId('month-view')).toBeVisible()
-}
-
 async function openEvents(page) {
   await page.getByRole('button', { name: 'Events', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Events', exact: true })).toBeVisible()
 }
 
 async function listEvents(page, path) {
-  const response = await page.request.get(new URL(path, fixture.address).href)
+  const response = await page.request.get(new URL(path, getFixture().address).href)
   await expect(response).toBeOK()
   return response.json()
 }
@@ -67,7 +51,7 @@ async function submitProposal(page, title, date, { time, location, description }
 
 test('keeps direct approval, editing, and confirmed deletion on management rows', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  await signIn(page)
+  await signIn(page, approver)
   await expect(page.getByRole('navigation').getByRole('button', { name: 'Approval queue' })).toHaveCount(0)
   await openEvents(page)
 
@@ -106,7 +90,7 @@ test('keeps direct approval, editing, and confirmed deletion on management rows'
 })
 
 test('approves a request from its details and shows who approved it', async ({ page }) => {
-  await signIn(page)
+  await signIn(page, approver)
   await openEvents(page)
 
   const title = 'Seedling Exchange'
@@ -145,19 +129,19 @@ test('shows the submitter and approver names as last, first middle', async ({ pa
     lastName: 'Fields',
     role: 'approver',
   }
-  const adminSession = await fixture.driver.signIn(approver)
+  const { driver } = getFixture()
+  const adminSession = await driver.signIn(approver)
   expect(adminSession.status).toBe('ok')
   for (const account of [submitter, namedApprover]) {
-    const created = await fixture.driver.createUser(adminSession.value.session, account)
+    const created = await driver.createUser(adminSession.value.session, account)
     expect(created.status).toBe('ok')
   }
 
   const title = 'Student Art Showcase'
   const date = '2027-04-08'
-  const signOut = page.getByRole('button', { name: 'Sign out', exact: true })
   await signIn(page, submitter)
   await submitProposal(page, title, date)
-  await signOut.click()
+  await signOut(page)
 
   await signIn(page, namedApprover)
   await openEvents(page)
@@ -167,17 +151,17 @@ test('shows the submitter and approver names as last, first middle', async ({ pa
   await expect(details.getByTestId('event-creator')).toHaveText('Gomez, Avery Jo')
   await expect(details.getByTestId('event-approver')).toHaveText('Fields, Nora Lee')
   await details.getByRole('button', { name: 'Close', exact: true }).click()
-  await signOut.click()
+  await signOut(page)
 
   await signIn(page, submitter)
-  await page.locator(`[data-testid="month-day"][data-date="${date}"]`).getByTestId('open-day').click()
+  await dayCell(page, date).getByTestId('open-day').click()
   const agenda = page.getByTestId('day-view')
   const entry = agenda.getByRole('article').filter({ has: page.getByRole('heading', { name: title, exact: true }) })
   await expect(entry.getByTestId('event-creator')).toHaveText('Gomez, Avery Jo')
 })
 
 test('backdrop clicks dismiss event dialogs and discard unsaved edits', async ({ page }) => {
-  await signIn(page)
+  await signIn(page, approver)
   await openEvents(page)
 
   const title = 'Author Visit'
@@ -229,7 +213,7 @@ test('backdrop clicks dismiss event dialogs and discard unsaved edits', async ({
 })
 
 test('keeps edits open after a capacity error and publishes the edited request after retry', async ({ page }) => {
-  await signIn(page)
+  await signIn(page, approver)
   await openEvents(page)
 
   const originalTitle = 'Field Day Volunteers'
@@ -292,8 +276,8 @@ test('a teacher can submit a request and ordinary Save changes leaves it pending
   const editedTitle = 'Peer Tutoring Sign-up'
   await submitProposal(page, title, '2027-04-29')
 
-  await page.getByRole('button', { name: 'Sign out', exact: true }).click()
-  await signIn(page)
+  await signOut(page)
+  await signIn(page, approver)
   await openEvents(page)
   const pending = eventRow(pendingRequests(page), title)
   await pending.getByRole('button', { name: 'Edit ' + title }).click()
@@ -328,15 +312,16 @@ test('My Events shows only the teacher’s own requests and refreshes after appr
   const title = 'Student Podcast Workshop'
   const description = 'Bring a recording or an idea for a two-minute segment.'
   const directTitle = 'School Announcements'
-  const manager = await fixture.driver.signIn(approver)
-  const otherTeacher = await fixture.driver.signIn(teacher)
+  const { driver, address } = getFixture()
+  const manager = await driver.signIn(approver)
+  const otherTeacher = await driver.signIn(teacher)
   expect(manager.status).toBe('ok')
   expect(otherTeacher.status).toBe('ok')
   const managerSession = manager.value.session
-  expect((await fixture.driver.createUser(managerSession, author)).status).toBe('ok')
-  expect((await fixture.driver.createEvent(managerSession, { title: directTitle, date, time: '08:30' })).value?.status)
+  expect((await driver.createUser(managerSession, author)).status).toBe('ok')
+  expect((await driver.createEvent(managerSession, { title: directTitle, date, time: '08:30' })).value?.status)
     .toBe('approved')
-  expect((await fixture.driver.createEvent(otherTeacher.value.session, {
+  expect((await driver.createEvent(otherTeacher.value.session, {
     title: 'Other Teacher Workshop', date, time: '09:30',
   })).value?.status).toBe('pending')
 
@@ -378,7 +363,7 @@ test('My Events shows only the teacher’s own requests and refreshes after appr
   await expect(details).toBeHidden()
 
   await page.getByRole('navigation').getByRole('button', { name: 'Calendar', exact: true }).click()
-  const day = page.locator(`[data-testid="month-day"][data-date="${date}"]`)
+  const day = dayCell(page, date)
   await expect(day.getByTestId('event-title')).toHaveText([directTitle])
   await day.getByTestId('open-day').click()
   await expect(page.getByTestId('day-view').getByTestId('event-title')).toHaveText([directTitle])
@@ -387,8 +372,8 @@ test('My Events shows only the teacher’s own requests and refreshes after appr
 
   const managerPage = await browser.newPage()
   try {
-    await managerPage.goto(fixture.address)
-    await signIn(managerPage)
+    await managerPage.goto(address)
+    await signIn(managerPage, approver)
     await expect(myEventsButton(managerPage)).toHaveCount(0)
     await openEvents(managerPage)
     await approveButton(eventRow(pendingRequests(managerPage), title)).click()
@@ -397,7 +382,7 @@ test('My Events shows only the teacher’s own requests and refreshes after appr
     await managerPage.close()
   }
 
-  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await dispatchWindowFocus(page)
   await expect(publication).toBeVisible()
   await expect(request).toHaveCount(0)
   await expect(pending.getByRole('rowheader')).toHaveCount(0)
@@ -412,7 +397,7 @@ test('My Events shows only the teacher’s own requests and refreshes after appr
 })
 
 test('shows built-in event images inside the picker without a separate preview', async ({ page }) => {
-  await signIn(page)
+  await signIn(page, approver)
   await openEvents(page)
   const row = eventRow(publishedEvents(page), 'Author Visit')
   await row.getByRole('button', { name: 'Edit Author Visit' }).click()
@@ -435,7 +420,7 @@ test('shows built-in event images inside the picker without a separate preview',
 })
 
 test('only Choose file opens the event image picker and cancelling it preserves the edit', async ({ page }) => {
-  await signIn(page)
+  await signIn(page, approver)
   await openEvents(page)
   const row = eventRow(publishedEvents(page), 'Author Visit')
   await row.getByRole('button', { name: 'Edit Author Visit' }).click()
@@ -477,7 +462,7 @@ test('only Choose file opens the event image picker and cancelling it preserves 
 })
 
 test('shows the uploaded thumbnail in the event image picker before and after saving', async ({ page }) => {
-  await signIn(page)
+  await signIn(page, approver)
   await openEvents(page)
   const row = eventRow(publishedEvents(page), 'Author Visit')
   const edit = row.getByRole('button', { name: 'Edit Author Visit' })

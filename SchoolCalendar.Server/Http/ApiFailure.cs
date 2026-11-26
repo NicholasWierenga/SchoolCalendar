@@ -9,7 +9,7 @@ public sealed class ApiFailure(int status, string code, string message) : Except
 {
     public int Status { get; } = status;
     public string Code { get; } = code;
-    public object Body => new { code = Code, message = Message };
+    private object Body => new { code = Code, message = Message };
 
     public IResult ToResult() => Results.Json(Body, statusCode: Status);
 
@@ -19,10 +19,11 @@ public sealed class ApiFailure(int status, string code, string message) : Except
     public static ApiFailure Forbidden() => new(403, "forbidden", "This action requires approver access.");
     public static ApiFailure NotFound(string item) => new(404, "not_found", $"{item} was not found.");
     public static ApiFailure Conflict(string message) => new(409, "conflict", message);
-    public static ApiFailure Capacity(DateOnly date) =>
-        new(409, "capacity", $"{date:MMM d, yyyy} already has 10 approved events.");
+    public static ApiFailure Capacity(DateOnly date, int limit) =>
+        new(409, "capacity", $"{date:MMM d, yyyy} already has {limit} approved events.");
+    internal static ApiFailure RecordChanged() => Conflict("This record changed. Reload it and try again.");
 
-    public Task WriteAsync(HttpContext context, CancellationToken cancellationToken = default)
+    public Task WriteAsync(HttpContext context, CancellationToken cancellationToken)
     {
         context.Response.StatusCode = Status;
         return context.Response.WriteAsJsonAsync(Body, cancellationToken: cancellationToken);
@@ -46,7 +47,7 @@ public sealed class ApiFailure(int status, string code, string message) : Except
 
         if (!decoded.SequenceEqual(currentVersion))
         {
-            throw Conflict("This record changed. Reload it and try again.");
+            throw RecordChanged();
         }
     }
 }
@@ -62,7 +63,7 @@ public sealed class ApiExceptionHandler : IExceptionHandler
             BadHttpRequestException badRequest =>
                 new ApiFailure(badRequest.StatusCode, "invalid", "The request could not be read."),
             JsonException => ApiFailure.Invalid("The request could not be read."),
-            DbUpdateConcurrencyException => ApiFailure.Conflict("This record changed. Reload it and try again."),
+            DbUpdateConcurrencyException => ApiFailure.RecordChanged(),
             _ => null
         };
         if (error is null)

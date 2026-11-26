@@ -11,6 +11,7 @@ function hit(root, x, y, selector) {
 
 function stopPaging(gesture) {
   window.clearInterval(gesture.timer)
+  gesture.timer = null
   gesture.arrow = null
 }
 
@@ -43,7 +44,7 @@ export default function useCalendarDrag({ rootRef, enabled, month, records, onSt
       releaseGesture(gestureRef, calendar)
       if (!gesture.started) return
       setDrag(null)
-      finish(gesture.event, date, gesture.originMonth, gesture.fromPopover)
+      finish(gesture.move, date)
     }
 
     function pageAt(root, gesture) {
@@ -86,9 +87,9 @@ export default function useCalendarDrag({ rootRef, enabled, month, records, onSt
       gesture.x = event.clientX
       gesture.y = event.clientY
       pageAt(root, gesture)
-      const cell = hit(root, gesture.x, gesture.y, '[data-testid="month-day"]')
+      const cell = hit(root, gesture.x, gesture.y, '.school-month-cell')
       setDrag({
-        event: gesture.event,
+        event: gesture.move.event,
         x: gesture.x,
         y: gesture.y,
         arrow: Number(gesture.arrow?.dataset.pageMonth) || null,
@@ -100,14 +101,15 @@ export default function useCalendarDrag({ rootRef, enabled, month, records, onSt
       const gesture = gestureRef.current
       const root = rootRef.current
       if (!gesture || gesture.pointerId !== event.pointerId || !root) return
-      const cell = gesture.started ? hit(root, event.clientX, event.clientY, '[data-testid="month-day"]') : null
+      const cell = gesture.started ? hit(root, event.clientX, event.clientY, '.school-month-cell') : null
       if (gesture.started && event.cancelable) event.preventDefault()
       end(gesture, cell?.dataset.date ?? null)
     }
 
     function handleCancel(event) {
       const gesture = gestureRef.current
-      if (gesture && (event.pointerId === undefined || event.pointerId === gesture.pointerId)) end(gesture, null)
+      const pointerId = event?.pointerId
+      if (gesture && (pointerId === undefined || pointerId === gesture.pointerId)) end(gesture, null)
     }
 
     function handleEscape(event) {
@@ -119,28 +121,24 @@ export default function useCalendarDrag({ rootRef, enabled, month, records, onSt
     }
 
     function handleVisibility() {
-      if (document.hidden) handleCancel({})
+      if (document.hidden) handleCancel()
     }
 
     function handleCaptureLost(event) {
       if (event.target === calendar) handleCancel(event)
     }
 
-    window.addEventListener('pointermove', handleMove, { passive: false })
-    window.addEventListener('pointerup', handleUp, true)
-    window.addEventListener('pointercancel', handleCancel)
-    window.addEventListener('blur', handleCancel)
-    window.addEventListener('keydown', handleEscape, true)
-    document.addEventListener('visibilitychange', handleVisibility)
-    calendar.addEventListener('lostpointercapture', handleCaptureLost)
+    const listeners = new AbortController()
+    const { signal } = listeners
+    window.addEventListener('pointermove', handleMove, { passive: false, signal })
+    window.addEventListener('pointerup', handleUp, { capture: true, signal })
+    window.addEventListener('pointercancel', handleCancel, { signal })
+    window.addEventListener('blur', handleCancel, { signal })
+    window.addEventListener('keydown', handleEscape, { capture: true, signal })
+    document.addEventListener('visibilitychange', handleVisibility, { signal })
+    calendar.addEventListener('lostpointercapture', handleCaptureLost, { signal })
     return () => {
-      window.removeEventListener('pointermove', handleMove)
-      window.removeEventListener('pointerup', handleUp, true)
-      window.removeEventListener('pointercancel', handleCancel)
-      window.removeEventListener('blur', handleCancel)
-      window.removeEventListener('keydown', handleEscape, true)
-      document.removeEventListener('visibilitychange', handleVisibility)
-      calendar.removeEventListener('lostpointercapture', handleCaptureLost)
+      listeners.abort()
       releaseGesture(gestureRef, calendar)
     }
   }, [rootRef])
@@ -154,13 +152,15 @@ export default function useCalendarDrag({ rootRef, enabled, month, records, onSt
     if (!record) return
     if (event.pointerType === 'touch' && source.matches('.school-popover-summary') && !event.target.closest('.school-popover-grip')) return
     gestureRef.current = {
-      event: record,
+      move: {
+        event: record,
+        originMonth: month,
+        fromPopover: Boolean(source.closest('.school-datepicker-popover')),
+      },
       pointerId: event.pointerId,
       x: event.clientX,
       y: event.clientY,
-      originMonth: month,
       previewMonth: month,
-      fromPopover: Boolean(source.closest('.school-datepicker-popover')),
       started: false,
       arrow: null,
       timer: null,
