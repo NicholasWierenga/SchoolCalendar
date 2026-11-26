@@ -25,6 +25,7 @@ test.beforeEach(async ({ page }) => {
 
 const pendingRequests = (page) => page.getByRole('region', { name: 'Pending requests' })
 const publishedEvents = (page) => page.getByRole('region', { name: 'Published events' })
+const myEventsButton = (page) => page.getByRole('navigation').getByRole('button', { name: 'My Events', exact: true })
 const eventRow = (section, title) => section.getByRole('row').filter({
   has: section.page().getByRole('rowheader').getByText(title, { exact: true }),
 })
@@ -50,11 +51,14 @@ async function listEvents(page, path) {
   return response.json()
 }
 
-async function submitProposal(page, title, date) {
+async function submitProposal(page, title, date, { time, location, description } = {}) {
   await page.getByRole('button', { name: 'Propose event', exact: true }).click()
   const proposal = page.getByRole('dialog', { name: 'Propose an event' })
   await proposal.getByLabel('Event title').fill(title)
   await proposal.getByLabel('Date', { exact: true }).fill(date)
+  if (time) await proposal.getByLabel('Start time').fill(time)
+  if (location) await proposal.getByTestId('event-location-picker').selectOption({ label: location })
+  if (description) await proposal.getByLabel('Description').fill(description)
   await expect(saveAndApproveButton(proposal)).toHaveCount(0)
   await proposal.getByRole('button', { name: 'Submit for approval', exact: true }).click()
   await expect(proposal).toBeHidden()
@@ -290,6 +294,91 @@ test('a teacher can submit a request and ordinary Save changes leaves it pending
     creatorName: 'Reyes, Mira',
     approvedAt: null,
   }))
+})
+
+test('My Events shows only the teacher’s own requests and refreshes after approval', async ({ page, browser }) => {
+  const author = {
+    login: 'myeventsteacher',
+    password: 'Calendar3!',
+    firstName: 'Morgan',
+    lastName: 'Chen',
+    role: 'normal',
+  }
+  const date = '2027-04-23'
+  const title = 'Student Podcast Workshop'
+  const description = 'Bring a recording or an idea for a two-minute segment.'
+  const directTitle = 'School Announcements'
+  const manager = await fixture.driver.signIn(approver)
+  const otherTeacher = await fixture.driver.signIn(teacher)
+  expect(manager.status).toBe('ok')
+  expect(otherTeacher.status).toBe('ok')
+  const managerSession = manager.value.session
+  expect((await fixture.driver.createUser(managerSession, author)).status).toBe('ok')
+  expect((await fixture.driver.createEvent(managerSession, { title: directTitle, date, time: '08:30' })).value?.status)
+    .toBe('approved')
+  expect((await fixture.driver.createEvent(otherTeacher.value.session, {
+    title: 'Other Teacher Workshop', date, time: '09:30',
+  })).value?.status).toBe('pending')
+
+  await signIn(page, author)
+  await expect(page.getByRole('navigation').getByRole('button', { name: 'Events', exact: true })).toHaveCount(0)
+  await myEventsButton(page).click()
+  const pending = pendingRequests(page)
+  const published = publishedEvents(page)
+  await expect(page.getByRole('heading', { name: 'My Events', exact: true })).toBeVisible()
+  await expect(pending.or(published).getByRole('heading')).toHaveText(['Pending requests', 'Published events'])
+  await expect(pending.getByRole('rowheader')).toHaveCount(0)
+  await expect(published.getByRole('rowheader')).toHaveCount(0)
+
+  await submitProposal(page, title, date, { time: '15:45', location: 'Library', description })
+  const request = eventRow(pending, title)
+  const publication = eventRow(published, title)
+  await expect(request).toBeVisible()
+  await expect(pending.getByRole('rowheader')).toHaveCount(1)
+  await expect(published.getByRole('rowheader')).toHaveCount(0)
+  await expect(request.getByRole('button')).toHaveCount(1)
+  await request.getByRole('button', { name: 'View ' + title, exact: true }).click()
+
+  const details = page.getByRole('dialog', { name: title })
+  await expect(details.getByText('Pending approval', { exact: true })).toBeVisible()
+  await expect(details.getByText(/Apr 23, 2027, 3:45\s*PM/i)).toBeVisible()
+  await expect(details.getByText('Library', { exact: true })).toBeVisible()
+  await expect(details.getByText(description, { exact: true })).toBeVisible()
+  await expect(details.getByTestId('event-creator')).toHaveText('Chen, Morgan')
+  await expect(details.getByTestId('event-approver')).toHaveCount(0)
+  await expect(details.getByRole('button', { name: /^(Approve|Edit|Delete)\b/ })).toHaveCount(0)
+  await details.getByRole('button', { name: 'Close', exact: true }).click()
+
+  await page.getByRole('navigation').getByRole('button', { name: 'Calendar', exact: true }).click()
+  const day = page.locator(`[data-testid="month-day"][data-date="${date}"]`)
+  await expect(day.getByTestId('event-title')).toHaveText([directTitle])
+  await day.getByTestId('open-day').click()
+  await expect(page.getByTestId('day-view').getByTestId('event-title')).toHaveText([directTitle])
+  await myEventsButton(page).click()
+  await expect(request).toBeVisible()
+
+  const managerPage = await browser.newPage()
+  try {
+    await managerPage.goto(fixture.address)
+    await signIn(managerPage)
+    await expect(myEventsButton(managerPage)).toHaveCount(0)
+    await openEvents(managerPage)
+    await approveButton(eventRow(pendingRequests(managerPage), title)).click()
+    await expect(eventRow(publishedEvents(managerPage), title)).toBeVisible()
+  } finally {
+    await managerPage.close()
+  }
+
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(publication).toBeVisible()
+  await expect(request).toHaveCount(0)
+  await expect(pending.getByRole('rowheader')).toHaveCount(0)
+  await expect(published.getByRole('rowheader')).toHaveCount(1)
+  await expect(publication.getByRole('button')).toHaveCount(1)
+  await publication.getByRole('button', { name: 'View ' + title, exact: true }).click()
+  await expect(details.getByText('Published', { exact: true })).toBeVisible()
+  await expect(details.getByTestId('event-approver')).toHaveText('Lane, Robin')
+  await expect(details.getByText('Approved', { exact: true })).toBeVisible()
 })
 
 test('shows built-in event images inside the picker without a separate preview', async ({ page }) => {

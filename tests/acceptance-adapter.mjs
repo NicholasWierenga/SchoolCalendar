@@ -121,9 +121,9 @@ function driverAt(address) {
     const { result } = await request(session, method, path, input);
     if (result.status === 'ok' && result.value) {
       if (Array.isArray(result.value)) {
-        result.value = result.value.map(withoutVersion);
+        result.value = result.value.map(contractRecord);
       } else {
-        result.value = withoutVersion(result.value);
+        result.value = contractRecord(result.value);
       }
     }
     return result;
@@ -135,7 +135,7 @@ function driverAt(address) {
       if (result.status !== 'ok') return result;
       const session = response.headers.getSetCookie().map(cookie => cookie.split(';', 1)[0]).join('; ');
       if (!session) throw new Error('Sign-in succeeded without an authentication cookie.');
-      return { status: 'ok', value: { session, user: withoutVersion(result.value) } };
+      return { status: 'ok', value: { session, user: contractRecord(result.value) } };
     },
     createUser: (session, input) => api(session, 'POST', '/users', input),
     listUsers: session => api(session, 'GET', '/users'),
@@ -155,7 +155,7 @@ function driverAt(address) {
   };
 }
 
-function withoutVersion({ version, ...record }) {
+function contractRecord({ version, isOwn, ...record }) {
   return record;
 }
 

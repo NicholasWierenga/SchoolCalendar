@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json.Serialization;
 using SchoolCalendar.Server.Locations;
 using SchoolCalendar.Server.Users;
 
@@ -46,10 +47,13 @@ public sealed record EventResponse(
     string CreatorName, string? ApproverName, DateTimeOffset CreatedAt,
     DateTimeOffset? ApprovedAt, string Version)
 {
-    public static EventResponse From(CalendarEvent entry) => new(
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool IsOwn { get; init; }
+
+    public static EventResponse From(CalendarEvent entry, bool isOwn = false) => new(
         entry.Id, entry.Title, entry.Description, entry.LocationId, entry.Location?.Name,
         entry.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
         entry.Time.ToString("HH:mm", CultureInfo.InvariantCulture), entry.Image, entry.Status,
         entry.CreatorName, entry.ApproverName, entry.CreatedAt, entry.ApprovedAt,
-        Convert.ToBase64String(entry.Version));
+        Convert.ToBase64String(entry.Version)) { IsOwn = isOwn };
 }

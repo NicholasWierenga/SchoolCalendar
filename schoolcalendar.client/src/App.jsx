@@ -5,7 +5,7 @@ import SignIn from './features/auth/SignIn'
 import Calendar from './features/calendar/Calendar'
 import { initialDate } from './features/calendar/calendarDates'
 import DirectoryPage from './features/admin/DirectoryPage'
-import EventsPage from './features/events/EventsPage'
+import EventsPage, { MyEventsPage } from './features/events/EventsPage'
 import EventForm from './features/events/EventForm'
 import { changedFields, eventFields } from './features/events/eventFields'
 import { useEventChanges } from './features/events/useEventChanges'
@@ -59,8 +59,8 @@ function SchoolCalendar({ user, onUserChange }) {
     try {
       const currentUser = await api('/session', { signal: request.signal })
       if (request.signal.aborted) return
+      if (currentUser.role !== user.role) setPage('calendar')
       if (currentUser.role !== 'approver') {
-        setPage('calendar')
         setEditor(current => current?.event ? null : current)
       }
       onUserChange(currentUser)
@@ -69,7 +69,7 @@ function SchoolCalendar({ user, onUserChange }) {
       if (err.status === 401) onUserChange(null)
       else setNotice(err.message)
     }
-  }, [onUserChange])
+  }, [onUserChange, user.role])
 
   const checkRole = useEffectEvent(event => {
     if (event.detail !== user.role) void refreshSession()
@@ -141,6 +141,9 @@ function SchoolCalendar({ user, onUserChange }) {
             onApprove={approveEvent}
             onChange={eventAdminChanged}
           />
+        )}
+        {user.role === 'normal' && page === 'my-events' && (
+          <MyEventsPage revision={revision} />
         )}
         {(page === 'users' || page === 'locations') && (
           <DirectoryPage key={page} kind={page === 'users' ? 'user' : 'location'} onChange={directoryChanged} />

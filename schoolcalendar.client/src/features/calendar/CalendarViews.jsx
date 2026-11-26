@@ -4,6 +4,12 @@ import EventImage from '../../components/EventImage'
 import { dailyCapacity, formatDay, formatTime, formatTimeParts, publishedCount } from './calendarDates'
 import { monthOverflowLabel, monthPreview } from './monthPreview'
 
+const ownershipLabel = 'Submitted by you'
+
+function isOwnPublishedEvent(event) {
+  return event.status === 'approved' && event.isOwn === true
+}
+
 function EditButton({ event, onEdit, small = false }) {
   if (!onEdit) return null
   return (
@@ -23,10 +29,12 @@ function EditButton({ event, onEdit, small = false }) {
 
 export function MonthEvent({ event, single, onActivate, onChoose, onEdit }) {
   const pending = event.status === 'pending'
+  const own = isOwnPublishedEvent(event)
   const time = formatTime(event.time)
-  const summary = [time, event.title, event.location, pending ? 'Pending approval' : 'Published'].filter(Boolean).join(' · ')
+  const status = pending ? 'Pending approval' : 'Published'
+  const summary = [time, event.title, event.location, status, own && ownershipLabel].filter(Boolean).join(' · ')
   return (
-    <div className={`school-month-item${pending ? ' school-month-pending' : ''}`} data-testid="calendar-event">
+    <div className={`school-month-item${pending ? ' school-month-pending' : ''}${own ? ' school-event-own' : ''}`} data-testid="calendar-event">
       <button
         type="button"
         className={`school-month-summary${single ? ' school-month-single' : ''}`}
@@ -74,6 +82,7 @@ export function DayAgenda({ date, events, isApprover, onEdit, loading }) {
       {events.map((event, index) => {
         const { clock, period } = formatTimeParts(event.time)
         const pending = event.status === 'pending'
+        const own = isOwnPublishedEvent(event)
         const repeatedStart = isApprover && events[index - 1]?.time === event.time
         const moreAtStart = isApprover && events[index + 1]?.time === event.time
         return (
@@ -81,7 +90,7 @@ export function DayAgenda({ date, events, isApprover, onEdit, loading }) {
             <time className={`school-agenda-time${repeatedStart ? ' school-agenda-time-repeated' : ''}`} data-testid="event-time" dateTime={`${event.date}T${event.time}`}>
               {clock} <small>{period}</small>
             </time>
-            <div className={`school-agenda-card${pending ? ' school-agenda-pending' : ''}`}>
+            <div className={`school-agenda-card${pending ? ' school-agenda-pending' : ''}${own ? ' school-event-own' : ''}`}>
               <div className="school-agenda-description">
                 <h3>
                   <EventImage image={event.image} className="school-event-image" />
@@ -93,6 +102,7 @@ export function DayAgenda({ date, events, isApprover, onEdit, loading }) {
               <div className="school-agenda-meta">
                 {event.location && <div className="school-agenda-location"><MapPin aria-hidden="true" /><span data-testid="event-location">{event.location}</span></div>}
                 <p className="school-agenda-creator">Created by <span data-testid="event-creator">{event.creatorName}</span></p>
+                {own && <span className="school-agenda-ownership">{ownershipLabel}</span>}
               </div>
               <EditButton event={event} onEdit={onEdit} />
             </div>
@@ -189,15 +199,16 @@ export function DatePopover({ popup, rootRef, events, onClose, onDay, onMove, on
       <div className="school-popover-events">
         {events.map(event => {
           const pending = event.status === 'pending'
+          const own = isOwnPublishedEvent(event)
           const time = formatTime(event.time)
           const summary = [onMove ? `Move ${event.title}` : event.title, time, event.location, pending ? 'Pending request' : 'Published'].filter(Boolean).join(', ')
           return (
-            <div className={`school-popover-event${pending ? ' school-popover-pending' : ''}`} key={event.id} data-testid="popover-event">
+            <div className={`school-popover-event${pending ? ' school-popover-pending' : ''}${own ? ' school-event-own' : ''}`} key={event.id} data-testid="popover-event">
               <button
                 type="button"
                 className="school-popover-summary"
                 onClick={() => onMove ? onMove(event) : onDay(date)}
-                aria-label={summary}
+                aria-label={own ? `${summary}, ${ownershipLabel}` : summary}
                 data-drag-event={onMove ? event.id : undefined}
               >
                 {onMove && <span className="school-popover-grip" aria-hidden="true"><GripVertical /></span>}

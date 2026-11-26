@@ -15,7 +15,9 @@ Open **http://localhost:5187**. The first start creates the database, applies mi
 | Login | Password | Access |
 | --- | --- | --- |
 | `approver` | `Calendar1!` | Publish and edit events, review proposals, and manage users and locations |
-| `teacher` | `Calendar1!` | View the calendar and submit proposals |
+| `teacher` | `Calendar1!` | View the calendar, submit proposals, and review their status in **My Events** |
+
+Teachers can open **My Events** to check the date, time, location, and details of their own pending and published submissions. Approval adds the event to the school-wide calendar. The teacher who submitted it sees a blue background and a thicker left border.
 
 Approvers can review submissions under **Events → Pending requests** or open the pencil on a pending calendar entry to edit or approve it. Only published events appear on the school-wide calendar. In the approver’s Month view, published events get first choice of the two visible slots. The Day view includes every request at its proposed start time, marked with a dashed outline and a clock. Only published events count toward the daily limit of ten.
 

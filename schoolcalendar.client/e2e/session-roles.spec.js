@@ -85,6 +85,22 @@ test('updates the open calendar and management screens after another manager cha
   await expect(page.getByTestId('nav-new-event')).toHaveText('Propose event')
 })
 
+test('returns from My Events to Calendar when a teacher becomes an approver', async ({ page }) => {
+  const id = await openAccount(page, 'mypagepromotion', 'normal')
+  const nav = page.getByRole('navigation')
+  const myEvents = nav.getByRole('button', { name: 'My Events', exact: true })
+  await myEvents.click()
+  const heading = page.getByRole('heading', { name: 'My Events', exact: true })
+  await expect(heading).toBeVisible()
+
+  await changeRole(id, 'approver')
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(myEvents).toHaveCount(0)
+  await expect(nav.getByRole('button', { name: 'Events', exact: true })).toBeVisible()
+  await expect(heading).toHaveCount(0)
+  await expect(page.getByTestId('month-view')).toBeVisible()
+})
+
 test('keeps the latest role when two session checks overlap', async ({ page }) => {
   const id = await openAccount(page, 'overlap', 'normal')
   const before = Promise.withResolvers()

@@ -335,7 +335,8 @@ html:has(.school-calendar) { scrollbar-gutter: stable; }
 }
 
 .school-agenda-time small { font-size: 10px; }
-.school-agenda-time-repeated {
+.school-agenda-time-repeated,
+.school-agenda-ownership {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -358,6 +359,21 @@ html:has(.school-calendar) { scrollbar-gutter: stable; }
   border: 1px dashed var(--calendar-pending-border);
   border-radius: 6px;
   background: var(--calendar-pending-background);
+}
+
+.school-agenda-card.school-event-own {
+  margin-inline-start: -8px;
+  padding: 6px 4px;
+  border: 1px var(--event-outline);
+  border-radius: 6px;
+  background: var(--event-fill);
+}
+
+.school-calendar .school-event-own {
+  --event-outline: solid #97b8d4;
+  --event-fill: #e6f1fa;
+  --event-hover: #d7eaf8;
+  border-inline-start: 4px solid #366f9e;
 }
 
 .school-pending-label {

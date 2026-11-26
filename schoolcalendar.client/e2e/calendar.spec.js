@@ -365,6 +365,79 @@ test('Undo stays reachable below an open event list on a small screen', async ({
   await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeHidden()
 })
 
+function eventPaint(row) {
+  return row.evaluate(element => {
+    const { backgroundColor, borderLeftColor, borderLeftWidth } = getComputedStyle(element)
+    return { backgroundColor, borderLeftColor, borderLeftWidth: parseFloat(borderLeftWidth) }
+  })
+}
+
+async function expectOwnershipHighlight(own, other) {
+  await expect(own).toBeVisible()
+  await expect(other).toBeVisible()
+  const highlighted = await eventPaint(own)
+  const standard = await eventPaint(other)
+  expect(highlighted.backgroundColor).not.toBe(standard.backgroundColor)
+  expect(highlighted.borderLeftColor).not.toBe(standard.borderLeftColor)
+  expect(highlighted.borderLeftWidth).toBeGreaterThan(standard.borderLeftWidth)
+}
+
+test('highlights a teacher’s own published events across calendar views in time order', async ({ page }) => {
+  const date = '2027-04-22'
+  const own = 'Earth Day Walk'
+  const direct = 'Community Meetup'
+  const manager = await fixture.driver.signIn(approver)
+  expect(manager.status).toBe('ok')
+  const created = await fixture.driver.createEvent(manager.value.session, { date, time: '08:30', title: direct })
+  expect(created.value?.status).toBe('approved')
+
+  const byTitle = (scope, title, testId = 'calendar-event') => scope.getByTestId(testId).filter({ hasText: title })
+  const signOut = () => page.getByRole('button', { name: 'Sign out', exact: true }).click()
+  const expectMonthSummary = async scope => {
+    await expect(scope.getByTestId('event-title')).toHaveText([direct, own])
+    await expect(scope.getByRole('button', { name: /Earth Day Walk.*Submitted by you$/ })).toBeVisible()
+    await expect(scope.getByRole('button', { name: /Submitted by you$/ })).toHaveCount(1)
+    await expectOwnershipHighlight(byTitle(scope, own), byTitle(scope, direct))
+  }
+
+  await signOut()
+  await signIn(page, teacher)
+  const preview = dayCell(page, date)
+  await expectMonthSummary(preview)
+
+  const busyDay = dayCell(page, '2027-04-16')
+  await expect(busyDay.getByTestId('event-title')).toHaveText(['Jazz Lab', 'Book Swap'])
+  await busyDay.getByTestId('month-more').click()
+  const overflow = page.getByRole('dialog', { name: /April 16/ })
+  await expect(overflow.getByTestId('event-title').nth(2)).toHaveText('Science Expo')
+  await expect(overflow.getByRole('button', { name: /Science Expo.*Submitted by you$/ })).toBeVisible()
+  await expect(overflow.getByRole('button', { name: /Submitted by you$/ })).toHaveCount(1)
+  await expectOwnershipHighlight(byTitle(overflow, 'Science Expo', 'popover-event'), byTitle(overflow, 'Jazz Lab', 'popover-event'))
+
+  await overflow.getByRole('button', { name: 'Open day agenda' }).click()
+  const agenda = page.getByTestId('day-view')
+  await expect(agenda).toHaveAttribute('data-date', '2027-04-16')
+  await expect(agenda.getByTestId('event-title').nth(2)).toHaveText('Science Expo')
+  await expect(byTitle(agenda, 'Science Expo').getByText('Submitted by you', { exact: true })).toHaveCount(1)
+  await expect(agenda.getByText('Submitted by you', { exact: true })).toHaveCount(1)
+  await expectOwnershipHighlight(
+    byTitle(agenda, 'Science Expo').locator('.school-agenda-card'),
+    byTitle(agenda, 'Jazz Lab').locator('.school-agenda-card'),
+  )
+
+  await page.setViewportSize({ width: 390, height: 900 })
+  await page.getByTestId('show-month').click()
+  await preview.getByTestId('open-day').click()
+  await expectMonthSummary(page.getByRole('region', { name: /Events for .*April 22/ }))
+
+  await signOut()
+  await page.setViewportSize({ width: 1200, height: 950 })
+  await signIn(page, approver)
+  await expect(preview.getByTestId('event-title')).toHaveText([direct, own])
+  await expect(preview.getByRole('button', { name: /Submitted by you$/ })).toHaveCount(0)
+  expect(await eventPaint(byTitle(preview, direct))).toEqual(await eventPaint(byTitle(preview, own)))
+})
+
 test.describe('pending requests on the calendar', () => {
   const monthDate = '2027-04-15'
   const agendaDate = '2027-04-23'

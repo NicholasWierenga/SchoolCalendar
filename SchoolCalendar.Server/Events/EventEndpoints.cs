@@ -18,6 +18,7 @@ public static class EventEndpoints
         var events = api.MapGroup("/events").RequireAuthorization();
         events.MapGet("", ListCalendarAsync);
         events.MapPost("", CreateAsync);
+        events.MapGet("/mine", ListMineAsync);
         events.MapGet("/pending", ListPendingAsync).RequireAuthorization(Roles.Approver);
         events.MapGet("/manage", ListAllAsync).RequireAuthorization(Roles.Approver);
         events.MapMethods("/{id:int}", ["PUT", "PATCH"], UpdateAsync).RequireAuthorization(Roles.Approver);
@@ -26,8 +27,18 @@ public static class EventEndpoints
     }
 
     private static Task<EventResponse[]> ListCalendarAsync(
-        string? from, string? to, CalendarDbContext db, CancellationToken cancellationToken) =>
-        ListAsync(InDateRange(db.Events.Where(entry => entry.Status == EventStatus.Approved), from, to), cancellationToken);
+        string? from, string? to, HttpContext http, CalendarDbContext db, CancellationToken cancellationToken)
+    {
+        var actor = http.Features.Get<CalendarUser>()!;
+        var entries = InDateRange(db.Events.Where(entry => entry.Status == EventStatus.Approved), from, to);
+        return ListAsync(entries, cancellationToken, actor.Role == Roles.Normal ? actor.Id : null);
+    }
+
+    private static Task<EventResponse[]> ListMineAsync(HttpContext http, CalendarDbContext db, CancellationToken cancellationToken)
+    {
+        var creatorId = http.Features.Get<CalendarUser>()!.Id;
+        return ListAsync(db.Events.Where(entry => entry.CreatorId == creatorId), cancellationToken);
+    }
 
     private static IQueryable<CalendarEvent> InDateRange(IQueryable<CalendarEvent> events, string? from, string? to)
     {
@@ -49,12 +60,12 @@ public static class EventEndpoints
         ListAsync(from is null && to is null ? db.Events : InDateRange(db.Events, from, to), cancellationToken);
 
     private static async Task<EventResponse[]> ListAsync(
-        IQueryable<CalendarEvent> entries, CancellationToken cancellationToken)
+        IQueryable<CalendarEvent> entries, CancellationToken cancellationToken, int? ownEventCreatorId = null)
     {
         var rows = await entries.AsNoTracking().Include(entry => entry.Location)
             .OrderBy(entry => entry.Date).ThenBy(entry => entry.Time).ThenBy(entry => entry.Id)
             .ToListAsync(cancellationToken);
-        return rows.Select(EventResponse.From).ToArray();
+        return rows.Select(entry => EventResponse.From(entry, entry.CreatorId == ownEventCreatorId)).ToArray();
     }
 
     private static async Task<IResult> CreateAsync(
