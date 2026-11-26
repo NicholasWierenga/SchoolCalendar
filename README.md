@@ -13,7 +13,7 @@ Requires the [.NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10
    .\Start-SchoolCalendar.cmd
    ```
 
-3. When the terminal says **Now listening**, open [SchoolCalendar](http://localhost:5187). Press **Ctrl+C** in the terminal to stop the app.
+3. When the terminal says **Now listening**, open [SchoolCalendar](http://localhost:5187).
 
 The launcher installs missing frontend dependencies, builds React, and starts the server. On first use, the server creates the LocalDB database and seeds the demo accounts and events. Later runs keep your data.
 
@@ -30,9 +30,9 @@ A fresh database includes a request you can follow through approval.
 2. Sign in as `approver` and open **Events**. Under **Pending requests**, click **Approve** on **Seedling Exchange**. It moves to **Published events**.
 3. Sign out, then sign in as `teacher` again. **My Events → Published events** now includes **Seedling Exchange**, and the school calendar shows it on April 22.
 
-Click an event in Month, Day, or the **+ more** list to read its details. Teachers can read any published event. Approvers can edit or delete an event from its details and approve a pending request there or under **Events → Pending requests**. The pencil opens the editor directly. In the approver’s Month view, published events get first choice of the two visible slots. The Day view includes every request at its proposed start time, marked with a dashed outline and a clock. Only published events count toward the daily limit of ten.
+Click an event in Month, Day, or the **+ more** list to read its details. Teachers can read any published event. Approvers can edit or delete an event from its details and approve a pending request there or under **Events → Pending requests**. The pencil opens the editor directly. The Day view includes every request at its proposed start time, marked with a dashed outline and a clock. Only published events count toward the daily limit of ten.
 
-The demo opens in April 2027. April 16 has ten approved sessions. Open **+8 more** to see the full day in time order. Drag a session onto a date, or hold it over a month arrow to reach another month. Undo(shows below the calendar when a change an event is changed) restores the last successful move or pencil edit.
+The demo opens in April 2027. April 16 has ten approved sessions. Open **+8 more** to see the full day in time order. Drag a session onto a date, or hold it over a month arrow to reach another month. Undo(shows below the calendar when an event is changed) restores the last successful move or pencil edit.
 
 ## Connect in SSMS
 
