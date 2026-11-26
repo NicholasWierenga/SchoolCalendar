@@ -30,6 +30,7 @@ export default function Calendar({
   const inDayView = mode === 'day'
   const gridRange = monthGridRange(month)
   const visibleSelectedDate = date >= gridRange.from && date <= gridRange.to
+  const activeDate = visibleSelectedDate ? date : month
   const compact = useCompactCalendar(rootRef)
   const isApprover = user.role === 'approver'
   const { items: events, loading = false, error } = useMonthEvents(gridRange, refreshKey, isApprover)
@@ -47,7 +48,7 @@ export default function Calendar({
     if (popup && popup.date !== focusDateRequest.date) setPopup(null)
   }
 
-  useEffect(() => { onDateChange?.(date) }, [date, onDateChange])
+  useEffect(() => { onDateChange?.(activeDate) }, [activeDate, onDateChange])
 
   useLayoutEffect(() => {
     // A shorter view only needs enough document height to keep the current scroll offset.
@@ -191,7 +192,7 @@ export default function Calendar({
   function changeMode(nextMode) {
     if (nextMode === mode || busy || drag || keyboardMove) return
     closePopup()
-    setPeriod(periodSelection(visibleSelectedDate ? date : month, nextMode))
+    setPeriod(periodSelection(activeDate, nextMode))
   }
 
   function cancelKeyboardMove() {

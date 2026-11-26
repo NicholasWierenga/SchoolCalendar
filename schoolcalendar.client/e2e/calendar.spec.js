@@ -319,12 +319,17 @@ test.describe('Calendar navigation and scrolling', () => {
     await page.getByTestId('month-next').click()
     await expect(page.getByTestId('month-view')).toHaveAttribute('data-month', '2027-05')
     await expect(page.locator('.school-month-selected')).toHaveCount(0)
+    await page.getByTestId('nav-new-event').click()
+    await expect(page.getByTestId('event-date-input')).toHaveValue('2027-05-01')
+    await page.getByTestId('cancel-form').click()
     await page.getByTestId('month-previous').click()
     await expect(dayCell(page, '2027-04-01')).toHaveClass(/school-month-selected/)
     await dayCell(page, '2027-04-30').getByTestId('open-day').click()
     await page.getByTestId('show-month').click()
     await page.getByTestId('month-next').click()
     await expect(dayCell(page, '2027-04-30')).toHaveClass(/school-month-selected/)
+    await page.getByTestId('nav-new-event').click()
+    await expect(page.getByTestId('event-date-input')).toHaveValue('2027-04-30')
   })
 
   async function expectMonthToEndWithContent(lastContent) {
