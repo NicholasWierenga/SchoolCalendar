@@ -40,6 +40,41 @@ async function savedStatuses(title) {
   return [...published.value, ...pending.value].filter(event => event.title === title).map(event => event.status)
 }
 
+test('toggles password visibility without submitting the sign-in form', async ({ page }) => {
+  let signInRequests = 0
+  page.on('request', request => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/session') signInRequests++
+  })
+
+  await page.goto(fixture.address)
+  const password = page.getByLabel('Password', { exact: true })
+  const show = page.getByRole('button', { name: 'Show password', exact: true })
+  const hide = page.getByRole('button', { name: 'Hide password', exact: true })
+  await expect(password).toHaveAttribute('type', 'password')
+  await page.getByLabel('Login name').fill(manager.login)
+  await password.fill(manager.password)
+
+  await password.press('Tab')
+  await expect(show).toBeFocused()
+  await page.keyboard.press('Space')
+  await expect(password).toHaveAttribute('type', 'text')
+  await expect(password).toHaveValue(manager.password)
+  await hide.click()
+  await expect(password).toHaveAttribute('type', 'password')
+  await expect(password).toHaveValue(manager.password)
+  expect(signInRequests).toBe(0)
+
+  await show.click()
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await expect(page.getByTestId('month-view')).toBeVisible()
+  expect(signInRequests).toBe(1)
+
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click()
+  await expect(password).toHaveAttribute('type', 'password')
+  await expect(password).toHaveValue('')
+  await expect(show).toBeVisible()
+})
+
 for (const [before, after] of [['normal', 'approver'], ['approver', 'normal']]) {
   test(`keeps the draft for review when the author changes from ${before} to ${after}`, async ({ page }) => {
     const title = `Draft by ${before}`

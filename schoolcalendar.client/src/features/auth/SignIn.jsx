@@ -6,6 +6,7 @@ import SchoolBrand from '../../components/SchoolBrand'
 export default function SignIn({ onSignIn }) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   async function submit(e) {
     e.preventDefault()
     if (busy) return
@@ -44,16 +45,22 @@ export default function SignIn({ onSignIn }) {
                 data-testid="sign-in-logon"
               />
             </label>
-            <label>
-              Password
+            <div className="login-password">
+              <label htmlFor="sign-in-password">Password</label>
               <input
+                id="sign-in-password"
                 name="password"
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 autoComplete="current-password"
+                autoCapitalize="none"
+                spellCheck={false}
                 required
                 data-testid="sign-in-password"
               />
-            </label>
+              <button type="button" aria-controls="sign-in-password" onClick={() => setShowPassword((shown) => !shown)}>
+                {showPassword ? 'Hide password' : 'Show password'}
+              </button>
+            </div>
             {error && (
               <p className="form-error" role="alert">
                 {error}

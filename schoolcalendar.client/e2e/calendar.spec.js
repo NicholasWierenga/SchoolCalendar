@@ -200,7 +200,7 @@ async function overflowDismissPoint(target, list) {
   return point
 }
 
-test('wheel scrolling continues on the page after the event list reaches its bottom', async ({ page }) => {
+test('the wheel input that reaches the event list bottom also scrolls the page', async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 640 })
   await dayCell(page, '2027-04-16').getByTestId('month-more').click()
   const list = page.getByRole('dialog', { name: /April 16/ })
@@ -208,20 +208,30 @@ test('wheel scrolling continues on the page after the event list reaches its bot
   await expect(events).toBeInViewport()
 
   const maxListScroll = await events.evaluate(element => element.scrollHeight - element.clientHeight)
+  const listScroll = () => events.evaluate(element => element.scrollTop)
   const pageScroll = () => page.evaluate(() => window.scrollY)
   const initialPageScroll = await pageScroll()
-  expect(maxListScroll).toBeGreaterThan(1)
-  expect(await page.evaluate(() => document.scrollingElement.scrollHeight - window.innerHeight))
-    .toBeGreaterThan(initialPageScroll)
+  const maxPageScroll = await page.evaluate(() => document.scrollingElement.scrollHeight - window.innerHeight)
+  const pageStep = Math.min(30, Math.floor((maxPageScroll - initialPageScroll) / 4))
+  expect(maxListScroll).toBeGreaterThan(4)
+  expect(pageStep).toBeGreaterThan(4)
 
-  await page.mouse.move(...await center(events))
-  await page.mouse.wheel(0, maxListScroll + 1)
-  await expect.poll(() => events.evaluate(element => element.scrollTop)).toBeGreaterThanOrEqual(maxListScroll - 1)
+  const pointer = await center(events)
+  await page.mouse.move(...pointer)
+  const partialListScroll = Math.floor(maxListScroll / 2)
+  await page.mouse.wheel(0, partialListScroll)
+  await expect.poll(listScroll).toBe(partialListScroll)
   expect(await pageScroll()).toBe(initialPageScroll)
 
-  await page.mouse.wheel(0, 120)
-  await expect.poll(pageScroll).toBeGreaterThan(initialPageScroll)
-  await expect(list).toBeVisible()
+  await page.mouse.wheel(0, maxListScroll - partialListScroll + pageStep)
+  await expect.poll(listScroll).toBeGreaterThanOrEqual(maxListScroll - 1)
+  await expect.poll(pageScroll).toBe(initialPageScroll + pageStep)
+
+  await page.mouse.wheel(0, pageStep)
+  await page.mouse.wheel(0, pageStep)
+  await expect.poll(pageScroll).toBe(initialPageScroll + 3 * pageStep)
+  expect(await events.evaluate((element, [x, y]) => element.contains(document.elementFromPoint(x, y)), pointer))
+    .toBe(true)
 })
 
 test('the first click on another date dismisses overflow and the second opens its agenda', async ({ page }) => {
