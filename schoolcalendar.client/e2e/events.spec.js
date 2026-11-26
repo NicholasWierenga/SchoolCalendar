@@ -50,6 +50,16 @@ async function listEvents(page, path) {
   return response.json()
 }
 
+async function submitProposal(page, title, date) {
+  await page.getByRole('button', { name: 'Propose event', exact: true }).click()
+  const proposal = page.getByRole('dialog', { name: 'Propose an event' })
+  await proposal.getByLabel('Event title').fill(title)
+  await proposal.getByLabel('Date', { exact: true }).fill(date)
+  await expect(saveAndApproveButton(proposal)).toHaveCount(0)
+  await proposal.getByRole('button', { name: 'Submit for approval', exact: true }).click()
+  await expect(proposal).toBeHidden()
+}
+
 test('shows pending requests before published events and approves a request from its row', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await signIn(page)
@@ -93,6 +103,54 @@ test('approves a request from its details and shows who approved it', async ({ p
   await expect(details.getByText('Published', { exact: true })).toBeVisible()
   await expect(details.getByTestId('event-approver')).toHaveText('Lane, Robin')
   await expect(approveButton(details)).toHaveCount(0)
+})
+
+test('shows the submitter and approver names as last, first middle', async ({ page }) => {
+  const submitter = {
+    login: 'namesubmitter',
+    password: 'Calendar2!',
+    firstName: 'Avery',
+    middleName: 'Jo',
+    lastName: 'Gomez',
+    role: 'normal',
+  }
+  const namedApprover = {
+    login: 'nameapprover',
+    password: 'Calendar2!',
+    firstName: 'Nora',
+    middleName: 'Lee',
+    lastName: 'Fields',
+    role: 'approver',
+  }
+  const adminSession = await fixture.driver.signIn(approver)
+  expect(adminSession.status).toBe('ok')
+  for (const account of [submitter, namedApprover]) {
+    const created = await fixture.driver.createUser(adminSession.value.session, account)
+    expect(created.status).toBe('ok')
+  }
+
+  const title = 'Student Art Showcase'
+  const date = '2027-04-08'
+  const signOut = page.getByRole('button', { name: 'Sign out', exact: true })
+  await signIn(page, submitter)
+  await submitProposal(page, title, date)
+  await signOut.click()
+
+  await signIn(page, namedApprover)
+  await openEvents(page)
+  await approveButton(eventRow(pendingRequests(page), title)).click()
+  await eventRow(publishedEvents(page), title).getByRole('button', { name: 'View ' + title }).click()
+  const details = page.getByRole('dialog', { name: title })
+  await expect(details.getByTestId('event-creator')).toHaveText('Gomez, Avery Jo')
+  await expect(details.getByTestId('event-approver')).toHaveText('Fields, Nora Lee')
+  await details.getByRole('button', { name: 'Close', exact: true }).click()
+  await signOut.click()
+
+  await signIn(page, submitter)
+  await page.locator(`[data-testid="month-day"][data-date="${date}"]`).getByTestId('open-day').click()
+  const agenda = page.getByTestId('day-view')
+  const entry = agenda.getByRole('article').filter({ has: page.getByRole('heading', { name: title, exact: true }) })
+  await expect(entry.getByTestId('event-creator')).toHaveText('Gomez, Avery Jo')
 })
 
 test('backdrop clicks dismiss event dialogs and discard unsaved edits', async ({ page }) => {
@@ -207,15 +265,9 @@ test('keeps edits open after a capacity error and publishes the edited request a
 test('a teacher can submit a request and ordinary Save changes leaves it pending', async ({ page }) => {
   await signIn(page, teacher)
   await expect(page.getByRole('button', { name: 'Events', exact: true })).toHaveCount(0)
-  await page.getByRole('button', { name: 'Propose event', exact: true }).click()
-  const proposal = page.getByRole('dialog', { name: 'Propose an event' })
   const title = 'Peer Tutoring'
   const editedTitle = 'Peer Tutoring Sign-up'
-  await proposal.getByLabel('Event title').fill(title)
-  await proposal.getByLabel('Date', { exact: true }).fill('2027-04-29')
-  await expect(saveAndApproveButton(proposal)).toHaveCount(0)
-  await proposal.getByRole('button', { name: 'Submit for approval', exact: true }).click()
-  await expect(proposal).toBeHidden()
+  await submitProposal(page, title, '2027-04-29')
 
   await page.getByRole('button', { name: 'Sign out', exact: true }).click()
   await signIn(page)

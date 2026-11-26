@@ -6,6 +6,10 @@ export async function api(path, options = {}) {
     headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...headers },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
+  const role = response.headers.get('X-Calendar-Role')
+  if (role && path !== '/session' && !settings.signal?.aborted) {
+    window.dispatchEvent(new CustomEvent('session-role', { detail: role }))
+  }
   if (response.status === 204) return null
   const content = await response.text()
   let data

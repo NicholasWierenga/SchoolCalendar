@@ -62,6 +62,13 @@ public static class EventEndpoints
     {
         await using var transaction = await DatabaseLock.AcquireAsync(db, EventWriteLock, cancellationToken);
         var creator = http.Features.Get<CalendarUser>()!;
+        var input = new JsonInput(body);
+        // If the form promised a different action, let the user review the draft before writing it.
+        if (input.NullableText("expectedRole") is string expectedRole && expectedRole != creator.Role)
+        {
+            return ApiFailure.Conflict("Your access changed. Review the updated action and save again.").ToResult();
+        }
+
         var now = clock.GetUtcNow();
         var entry = new CalendarEvent
         {
@@ -69,7 +76,7 @@ public static class EventEndpoints
             CreatorName = creator.DisplayName,
             CreatedAt = now
         };
-        await ApplyAsync(new JsonInput(body), entry, db, creating: true, cancellationToken);
+        await ApplyAsync(input, entry, db, creating: true, cancellationToken);
         if (creator.Role == Roles.Approver)
         {
             await CheckCapacityAsync(db, entry.Date, cancellationToken);

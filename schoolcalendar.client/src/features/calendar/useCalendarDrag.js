@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 import { shiftMonth } from './calendarDates'
 
 const moveThreshold = 7
@@ -14,6 +14,14 @@ function stopPaging(gesture) {
   gesture.arrow = null
 }
 
+function releaseGesture(gestureRef, root) {
+  const gesture = gestureRef.current
+  if (!gesture) return
+  gestureRef.current = null
+  stopPaging(gesture)
+  if (root?.hasPointerCapture(gesture.pointerId)) root.releasePointerCapture(gesture.pointerId)
+}
+
 export default function useCalendarDrag({ rootRef, enabled, month, records, onStart, onPage, onFinish }) {
   const gestureRef = useRef(null)
   const suppressClick = useRef(false)
@@ -22,15 +30,18 @@ export default function useCalendarDrag({ rootRef, enabled, month, records, onSt
   const page = useEffectEvent(onPage)
   const finish = useEffectEvent(onFinish)
 
+  if (!enabled && drag) setDrag(null)
+
+  useLayoutEffect(() => {
+    if (!enabled) releaseGesture(gestureRef, rootRef.current)
+  }, [enabled, rootRef])
+
   useEffect(() => {
     const calendar = rootRef.current
 
     function end(gesture, date) {
-      gestureRef.current = null
-      stopPaging(gesture)
+      releaseGesture(gestureRef, calendar)
       if (!gesture.started) return
-      const root = rootRef.current
-      if (root?.hasPointerCapture(gesture.pointerId)) root.releasePointerCapture(gesture.pointerId)
       setDrag(null)
       finish(gesture.event, date, gesture.originMonth, gesture.fromPopover)
     }
@@ -130,9 +141,7 @@ export default function useCalendarDrag({ rootRef, enabled, month, records, onSt
       window.removeEventListener('keydown', handleEscape, true)
       document.removeEventListener('visibilitychange', handleVisibility)
       calendar.removeEventListener('lostpointercapture', handleCaptureLost)
-      const gesture = gestureRef.current
-      if (gesture) stopPaging(gesture)
-      gestureRef.current = null
+      releaseGesture(gestureRef, calendar)
     }
   }, [rootRef])
 

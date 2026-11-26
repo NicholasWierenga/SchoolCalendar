@@ -31,7 +31,8 @@ public static class SessionEndpoints
         var input = new JsonInput(body);
         var login = input.NullableText("login");
         var password = input.NullableText("password");
-        var user = login?.Length is >= 4 and <= 16
+        // SQL Server ignores trailing spaces in equality comparisons.
+        var user = CalendarValidation.IsValidLogin(login)
             ? await db.Users.SingleOrDefaultAsync(x => x.Login == login && !x.IsDeleted, cancellationToken)
             : null;
 
@@ -77,6 +78,7 @@ public sealed class CalendarCookieEvents(CalendarDbContext db) : CookieAuthentic
         // Roles and names take effect on the next request, even for an existing cookie.
         context.HttpContext.Features.Set(user);
         context.ReplacePrincipal(Principal(user));
+        context.Response.Headers["X-Calendar-Role"] = user.Role;
         context.Response.Headers.CacheControl = "no-store";
     }
 

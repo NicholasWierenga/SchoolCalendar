@@ -89,6 +89,47 @@ test('Month scroll ends at the last content on desktop and compact screens', asy
   await expectMonthToEndWithContent(page.getByRole('region', { name: /^Events for / }))
 })
 
+for (const [size, width] of [['desktop', 1200], ['compact', 390]]) {
+  test(`school navigation stays usable while scrolling on ${size} screens`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 640 })
+    await page.getByTestId('show-day').click()
+    await expect(page.getByTestId('day-view').getByTestId('calendar-event')).toHaveCount(10)
+
+    const masthead = page.getByRole('banner')
+    const nav = page.getByRole('navigation', { name: 'School calendar navigation' })
+    const navTop = () => nav.evaluate(element => element.getBoundingClientRect().top)
+    const navButton = name => nav.getByRole('button', { name, exact: true })
+    const scrollY = () => page.evaluate(() => window.scrollY)
+    await expect(masthead).toBeInViewport({ ratio: 1 })
+    expect(await navTop()).toBeGreaterThan(0)
+
+    await page.evaluate(() => window.scrollTo(0, 300))
+    await expect.poll(scrollY).toBe(300)
+    await expect(masthead).not.toBeInViewport()
+    await expect.poll(navTop).toBeCloseTo(0)
+
+    for (const name of ['Calendar', 'Events', 'Users', 'Locations', 'New event']) {
+      const button = navButton(name)
+      await expect(button).toBeInViewport({ ratio: 1 })
+      expect(await button.evaluate(el => {
+        const box = el.getBoundingClientRect()
+        return el.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2))
+      }), name).toBe(true)
+    }
+
+    // Click where the controls are painted. Locator clicks can scroll them into view first.
+    await page.mouse.click(...await center(navButton('New event')))
+    const dialog = page.getByRole('dialog', { name: 'New event' })
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole('button', { name: 'Close dialog' }).click()
+    await expect.poll(scrollY).toBe(300)
+
+    await page.mouse.click(...await center(navButton('Events')))
+    await expect(navButton('Events')).toHaveAttribute('aria-current', 'page')
+    await expect(page.getByRole('heading', { name: 'Events', exact: true })).toBeVisible()
+  })
+}
+
 test('opening a short day agenda keeps the calendar heading in place', async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 640 })
   const heading = page.getByRole('heading', { level: 1 })
@@ -131,11 +172,13 @@ test('a busy month cell stays in place from the first visible frame after return
     await page.getByTestId('show-day').click()
     await expect(page.getByTestId('day-view').getByTestId('calendar-event')).toHaveCount(10)
     const monthButton = page.getByTestId('show-month')
-    await monthButton.evaluate((button, width) => {
-      const offset = width === 390 ? window.scrollY + button.getBoundingClientRect().top - 8 : 95
-      window.scrollTo(0, offset)
-    }, width)
+    const navHeight = await page.getByRole('navigation', { name: 'School calendar navigation' })
+      .evaluate(nav => nav.getBoundingClientRect().height)
+    await monthButton.evaluate((button, navHeight) => {
+      window.scrollTo(0, window.scrollY + button.getBoundingClientRect().top - navHeight - 8)
+    }, navHeight)
     await expect(monthButton).toBeInViewport({ ratio: 1 })
+    await monthButton.click({ trial: true })
     const before = await page.locator('#school-calendar-period').evaluate(el => el.getBoundingClientRect().top)
 
     const frames = await monthButton.evaluate(async button => {
@@ -249,6 +292,67 @@ test('move a hidden session across months, edit it, and undo only the edit', asy
   await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeHidden()
 })
 
+for (const method of ['keyboard', 'pointer']) {
+  test(`ends a ${method} calendar move when the approver loses access`, async ({ page }) => {
+    const manager = await fixture.driver.signIn(approver)
+    expect(manager.status).toBe('ok')
+    const session = manager.value.session
+    const account = { ...approver, login: `${method}mover` }
+    const created = await fixture.driver.createUser(session, account)
+    expect(created.status).toBe('ok')
+    await page.getByRole('button', { name: 'Sign out', exact: true }).click()
+    await signIn(page, account)
+
+    const writes = []
+    page.on('request', request => {
+      if (request.method() === 'PATCH' && new URL(request.url()).pathname.startsWith('/api/events/')) {
+        writes.push(request.url())
+      }
+    })
+    const refreshRole = async () => {
+      expect((await fixture.driver.updateUser(session, created.value.id, { role: 'normal' })).status).toBe('ok')
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+      await expect(page.getByTestId('nav-new-event')).toHaveText('Propose event')
+    }
+
+    const handle = dayCell(page, '2027-04-02').getByRole('button', { name: /Author Visit.*Published/ })
+    const monthView = page.getByTestId('month-view')
+    const nextMonth = page.getByTestId('month-next')
+    const destination = dayCell(page, '2027-05-12')
+
+    if (method === 'keyboard') {
+      await handle.press('Space')
+      const cancel = page.getByRole('button', { name: 'Cancel move', exact: true })
+      await expect(cancel).toBeVisible()
+      await nextMonth.click()
+      await refreshRole()
+      await expect(cancel).toBeHidden()
+    } else {
+      await expect(handle).toBeVisible()
+      const start = await center(handle)
+      await page.mouse.move(...start)
+      await page.mouse.down()
+      try {
+        await page.mouse.move(start[0] + 12, start[1])
+        await page.mouse.move(...(await center(nextMonth)))
+        await expect(monthView).toHaveAttribute('data-month', '2027-05')
+        await page.mouse.move(...(await center(destination)))
+        const preview = page.getByText('Author Visit · Wed, May 12', { exact: true })
+        await expect(preview).toBeVisible()
+        await refreshRole()
+        await expect(preview).toBeHidden()
+      } finally {
+        await page.mouse.up()
+      }
+    }
+
+    await expect(monthView).toHaveAttribute('data-month', '2027-05')
+    await destination.getByTestId('open-day').click()
+    await expect(page.getByTestId('day-view')).toHaveAttribute('data-date', '2027-05-12')
+    expect(writes).toEqual([])
+  })
+}
+
 test('Undo stays reachable below an open event list on a small screen', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 900 })
   await page.getByTestId('month-more').filter({ visible: true }).first().click()
@@ -265,6 +369,7 @@ test.describe('pending requests on the calendar', () => {
   const monthDate = '2027-04-15'
   const agendaDate = '2027-04-23'
   const fullDate = '2027-04-24'
+  const fullDayTitles = Array.from({ length: 10 }, (_, index) => `Published event ${index + 1}`)
   const agendaEvents = [
     ['approved', '13:00', 'Choir rehearsal'],
     ['pending', '09:30', 'Aerial photos'],
@@ -296,8 +401,7 @@ test.describe('pending requests on the calendar', () => {
       expect(event.value?.status, title).toBe(status)
     }
 
-    for (let number = 1; number <= 10; number += 1) {
-      const title = `Published event ${number}`
+    for (const title of fullDayTitles) {
       const event = await fixture.driver.createEvent(sessions.approved, { date: fullDate, time: '09:00', title })
       expect(event.value?.status, title).toBe('approved')
     }
@@ -401,6 +505,41 @@ test.describe('pending requests on the calendar', () => {
     await expect(page.getByText('1 of 10 published · 0 pending', { exact: true })).toBeVisible()
     await expect(agenda.getByTestId('event-title')).toHaveText([title])
     await expect(agenda.getByText('Pending request', { exact: true })).toHaveCount(0)
+  })
+
+  test('rejects a published event drop onto a full day and preserves both dates', async ({ page }) => {
+    const source = dayCell(page, '2027-04-02')
+    const destination = dayCell(page, fullDate)
+    const handle = source.getByRole('button', { name: /Author Visit.*Published/ })
+    const overflow = destination.getByTestId('month-more')
+    await expect(handle).toBeVisible()
+    await expect(overflow).toHaveText('+8 more')
+
+    const start = await center(handle)
+    await page.mouse.move(...start)
+    await page.mouse.down()
+    try {
+      await page.mouse.move(start[0] + 12, start[1])
+      await page.mouse.move(...(await center(destination)))
+      await expect(page.getByText('Author Visit · Day full', { exact: true })).toBeVisible()
+    } finally {
+      await page.mouse.up()
+    }
+
+    const feedback = page.getByTestId('calendar-feedback')
+    await expect(feedback).toBeVisible()
+    await expect(feedback).toHaveText('Apr 24, 2027 already has 10 approved events.')
+    await expect(handle).toBeVisible()
+    await expect(overflow).toHaveText('+8 more')
+
+    await page.reload()
+    await expect(handle).toBeVisible()
+    await expect(overflow).toHaveText('+8 more')
+    await destination.getByTestId('open-day').click()
+    const agenda = page.getByTestId('day-view')
+    await expect(agenda).toHaveAttribute('data-date', fullDate)
+    await expect(agenda.getByText('10 of 10 published · 0 pending', { exact: true })).toBeVisible()
+    await expect(agenda.getByTestId('event-title')).toHaveText([...fullDayTitles].sort())
   })
 
   test('can move a pending request to a full published day and undo the move', async ({ page }) => {

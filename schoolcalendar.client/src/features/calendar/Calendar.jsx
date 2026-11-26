@@ -31,6 +31,8 @@ export default function Calendar({ user, onEdit, refreshKey, lastChange, onMove,
   const gridRange = monthGridRange(month)
   const visibleSelectedDate = date >= gridRange.from && date <= gridRange.to
 
+  if (!isApprover && choosing) setChoosing(null)
+
   if (focusDateRequest && focusDateRequest.nonce !== handledRequest) {
     setHandledRequest(focusDateRequest.nonce)
     setPeriod(periodSelection(focusDateRequest.date, mode))

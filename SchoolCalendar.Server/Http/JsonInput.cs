@@ -79,9 +79,12 @@ public readonly struct JsonInput
 
 public static class CalendarValidation
 {
+    public static bool IsValidLogin(string? value) =>
+        value is { Length: >= 4 and <= 16 } && value.All(char.IsAsciiLetterOrDigit);
+
     public static void Login(string value)
     {
-        if (value.Length is < 4 or > 16 || value.Any(c => !char.IsAsciiLetterOrDigit(c)))
+        if (!IsValidLogin(value))
         {
             throw ApiFailure.Invalid("Enter a logon name of 4 to 16 letters or digits.");
         }

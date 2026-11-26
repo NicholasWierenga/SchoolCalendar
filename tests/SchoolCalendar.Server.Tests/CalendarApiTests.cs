@@ -30,6 +30,25 @@ public sealed class CalendarApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SignInRejectsLoginWithTrailingSpace()
+    {
+        using var signedIn = await SignInAsync(Administrator.Login, Administrator.Password);
+        using var session = await signedIn.GetAsync("/api/session");
+        Assert.Equal(HttpStatusCode.OK, session.StatusCode);
+
+        using var visitor = CreateClient();
+        using var paddedLogin = await visitor.PostAsJsonAsync("/api/session", new
+        {
+            login = Administrator.Login + " ",
+            password = Administrator.Password,
+        });
+        Assert.Equal(HttpStatusCode.Unauthorized, paddedLogin.StatusCode);
+
+        using var noSession = await visitor.GetAsync("/api/session");
+        Assert.Equal(HttpStatusCode.Unauthorized, noSession.StatusCode);
+    }
+
+    [Fact]
     public async Task ProtectedRoutesEnforceCurrentRoleAndCredentialChanges()
     {
         using var visitor = CreateClient();

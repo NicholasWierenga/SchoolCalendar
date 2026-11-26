@@ -24,6 +24,14 @@
 body {
   margin: 0;
 }
+#root {
+  /* The calendar can extend the page to preserve the scroll position on short days. */
+  min-height: inherit;
+}
+html:has(.school-nav) {
+  --nav-tab-height: 55px;
+  scroll-padding-top: calc(var(--nav-tab-height) + 1px);
+}
 button,
 input,
 select,
@@ -182,6 +190,9 @@ button.delete-icon {
   background: #355f49;
 }
 .school-nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   background: var(--paper);
   border-bottom: 1px solid var(--line);
 }
@@ -204,7 +215,7 @@ button.delete-icon {
   white-space: nowrap;
   align-items: center;
   gap: 7px;
-  min-height: 55px;
+  min-height: var(--nav-tab-height);
   border: 0;
   border-bottom: 3px solid transparent;
   background: none;
@@ -551,6 +562,10 @@ button.new-event {
   }
 }
 @media (max-width: 550px) {
+  html:has(.school-nav) {
+    --nav-tab-height: 39px;
+    scroll-padding-top: 6.5rem;
+  }
   .nav-inner {
     flex-wrap: wrap;
     padding-top: 8px;
@@ -560,9 +575,6 @@ button.new-event {
     order: 2;
     width: 100%;
     margin-top: 3px;
-  }
-  .nav-links button {
-    min-height: 39px;
   }
   .new-event {
     margin-left: auto;

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { api } from './api'
 import AppHeader from './components/AppHeader'
 import SignIn from './features/auth/SignIn'
@@ -10,7 +10,8 @@ import EventForm from './features/events/EventForm'
 import { changedFields, eventFields } from './features/events/eventFields'
 import { useEventChanges } from './features/events/useEventChanges'
 
-function SchoolCalendar({ user, onSignedOut, onUserChange }) {
+function SchoolCalendar({ user, onUserChange }) {
+  const sessionRequest = useRef(null)
   const [page, setPage] = useState('calendar')
   const [date, setDate] = useState(initialDate)
   const [editor, setEditor] = useState(null)
@@ -35,7 +36,7 @@ function SchoolCalendar({ user, onSignedOut, onUserChange }) {
   }
   async function saveEvent(values) {
     if (editor.event) return changes.edit(editor.event, values)
-    const result = await api('/events', { method: 'POST', body: values })
+    const result = await api('/events', { method: 'POST', body: { ...values, expectedRole: user.role } })
     saved(result, result.title + (result.status === 'approved' ? ' published.' : ' submitted for approval.'))
     return result
   }
@@ -51,22 +52,47 @@ function SchoolCalendar({ user, onSignedOut, onUserChange }) {
     eventAdminChanged(event.id, published.title + ' approved and published.')
     if (page === 'calendar') focusCalendar(published.date)
   }
-  async function directoryChanged(id) {
-    refresh()
-    if (page !== 'users' || id !== user.id) return
+  const refreshSession = useCallback(async () => {
+    sessionRequest.current?.abort()
+    const request = new AbortController()
+    sessionRequest.current = request
     try {
-      const currentUser = await api('/session')
-      if (currentUser.role !== 'approver') navigate('calendar')
+      const currentUser = await api('/session', { signal: request.signal })
+      if (request.signal.aborted) return
+      if (currentUser.role !== 'approver') {
+        setPage('calendar')
+        setEditor(current => current?.event ? null : current)
+      }
       onUserChange(currentUser)
     } catch (err) {
-      if (err.status === 401) onSignedOut()
+      if (request.signal.aborted) return
+      if (err.status === 401) onUserChange(null)
       else setNotice(err.message)
     }
+  }, [onUserChange])
+
+  const checkRole = useEffectEvent(event => {
+    if (event.detail !== user.role) void refreshSession()
+  })
+  useEffect(() => {
+    window.addEventListener('focus', refreshSession)
+    window.addEventListener('session-role', checkRole)
+    return () => {
+      sessionRequest.current?.abort()
+      window.removeEventListener('focus', refreshSession)
+      window.removeEventListener('session-role', checkRole)
+    }
+  }, [refreshSession])
+
+  function directoryChanged(id) {
+    refresh()
+    if (page === 'users' && id === user.id) void refreshSession()
   }
   async function signOut() {
     try {
       await api('/session', { method: 'DELETE' })
-      onSignedOut()
+      sessionRequest.current?.abort()
+      onUserChange(null)
     } catch (err) {
       setNotice(err.message)
     }
@@ -180,7 +206,7 @@ export default function App() {
       </main>
     )
   return user ? (
-    <SchoolCalendar key={user.id} user={user} onUserChange={setUser} onSignedOut={() => setUser(null)} />
+    <SchoolCalendar key={user.id} user={user} onUserChange={setUser} />
   ) : (
     <SignIn onSignIn={setUser} />
   )
