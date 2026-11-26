@@ -1,7 +1,5 @@
 import { useRef, useState } from 'react'
-import { api } from '../../api'
 import { useList } from '../../components/useList'
-import ConfirmDelete from '../../components/ConfirmDelete'
 import EventDetails from './EventDetails'
 import EventList from './EventList'
 
@@ -18,13 +16,19 @@ export function MyEventsPage({ revision }) {
   )
 }
 
-export default function EventsPage({ revision, onEdit, onChange, onApprove }) {
+export default function EventsPage({ revision, onEdit, onDelete, onApprove }) {
   const list = useList('/events/manage', revision)
-  const [detail, setDetail] = useState(null)
-  const [deleting, setDeleting] = useState(null)
+  const [selected, setSelected] = useState(null)
   const [approving, setApproving] = useState(null)
   const [problem, setProblem] = useState(null)
   const approvalInFlight = useRef(false)
+  const detail = list.loading ? selected : list.items.find((event) => event.id === selected?.id)
+  if (selected && !detail) setSelected(null)
+
+  function openDetails(event) {
+    setProblem(null)
+    setSelected(event)
+  }
 
   async function approve(event) {
     if (approvalInFlight.current) return
@@ -33,7 +37,6 @@ export default function EventsPage({ revision, onEdit, onChange, onApprove }) {
     setProblem(null)
     try {
       await onApprove(event)
-      setDetail((current) => (current?.id === event.id ? null : current))
     } catch (err) {
       setProblem({ id: event.id, message: err.message })
     } finally {
@@ -44,35 +47,21 @@ export default function EventsPage({ revision, onEdit, onChange, onApprove }) {
 
   const management = {
     approving,
-    problem: problem?.id === detail?.id ? null : problem,
+    problem,
     onApprove: approve,
     onEdit,
-    onDelete: setDeleting,
+    onDelete,
   }
 
   return (
-    <EventList list={list} onView={setDetail} management={management}>
+    <EventList list={list} onView={openDetails} management={management}>
       {detail && (
         <EventDetails
           event={detail}
-          onClose={() => setDetail(null)}
-          onApprove={() => approve(detail)}
-          approvalDisabled={approving !== null}
-          approving={approving === detail.id}
-          approvalError={problem?.id === detail.id ? problem.message : ''}
-        />
-      )}
-      {deleting && (
-        <ConfirmDelete
-          title="Delete event"
-          name={deleting.title}
-          onClose={() => setDeleting(null)}
-          onConfirm={async () => {
-            await api('/events/' + deleting.id + '?version=' + encodeURIComponent(deleting.version), {
-              method: 'DELETE',
-            })
-            onChange(deleting.id, deleting.title + ' deleted.')
-          }}
+          onClose={() => setSelected(null)}
+          onApprove={onApprove}
+          onEdit={onEdit}
+          onDelete={onDelete}
         />
       )}
     </EventList>

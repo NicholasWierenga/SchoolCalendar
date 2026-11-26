@@ -31,31 +31,265 @@ async function signIn(page, { login, password }) {
 
 const dayCell = (page, date) => page.locator('[data-testid="month-day"][data-date="' + date + '"]')
 
-for (const [source, openDay] of [
-  ['date cell click', day => day.getByTestId('open-day').click()],
-  ['event click', day => day.getByTestId('event-title').click()],
-  ['event Enter key', day => day.getByRole('button', { name: /Author Visit.*Published/ }).press('Enter')],
-]) {
-  test(`opens the daily agenda without browser errors from a month ${source}`, async ({ page }) => {
-    const browserErrors = []
-    page.on('console', message => {
-      if (message.type() === 'error') browserErrors.push(`[console] ${message.text()}`)
-    })
-    page.on('pageerror', error => browserErrors.push(error.stack ?? error.message))
-
-    const date = '2027-04-02'
-    try {
-      await openDay(dayCell(page, date))
-
-      const agenda = page.getByTestId('day-view')
-      await expect(agenda).toBeVisible()
-      await expect(agenda).toHaveAttribute('data-date', date)
-      await expect(agenda.getByTestId('event-title')).toHaveText(['Author Visit'])
-    } finally {
-      expect.soft(browserErrors).toEqual([])
-    }
+function collectBrowserErrors(page) {
+  const browserErrors = []
+  page.on('console', message => {
+    if (message.type() === 'error') browserErrors.push(`[console] ${message.text()}`)
   })
+  page.on('pageerror', error => browserErrors.push(error.stack ?? error.message))
+  return browserErrors
 }
+
+test('opens the daily agenda without browser errors from a month date cell', async ({ page }) => {
+  const browserErrors = collectBrowserErrors(page)
+  const date = '2027-04-02'
+  try {
+    await dayCell(page, date).getByTestId('open-day').click()
+
+    const agenda = page.getByTestId('day-view')
+    await expect(agenda).toBeVisible()
+    await expect(agenda).toHaveAttribute('data-date', date)
+    await expect(agenda.getByTestId('event-title')).toHaveText(['Author Visit'])
+    await expect(page.getByTestId('event-detail')).toHaveCount(0)
+  } finally {
+    expect.soft(browserErrors).toEqual([])
+  }
+})
+
+test('a teacher can open read-only published event details from every calendar view', async ({ page }) => {
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click()
+  await signIn(page, teacher)
+  const browserErrors = collectBrowserErrors(page)
+
+  async function expectPublishedDetails({ title, description, location, creator, when }) {
+    const details = page.getByRole('dialog', { name: title, exact: true })
+    await expect(details).toBeVisible()
+    await expect(details.getByText(description, { exact: true })).toBeVisible()
+    await expect(details.getByText(location, { exact: true })).toBeVisible()
+    await expect(details.getByText('Published', { exact: true })).toBeVisible()
+    await expect(details.getByTestId('event-creator')).toHaveText(creator)
+    await expect(details.getByText(when)).toBeVisible()
+    await expect(details.getByRole('button', { name: /^(Approve|Delete|Edit)\b/ })).toHaveCount(0)
+    return details
+  }
+
+  const authorDate = '2027-04-02'
+  const authorDay = dayCell(page, authorDate)
+  const authorEvent = /Author Visit.*Published/
+  const authorDetails = () => expectPublishedDetails({
+    title: 'Author Visit',
+    description: 'Meet a local writer and hear how a picture book takes shape.',
+    location: 'Library',
+    creator: 'Bell, Jonah',
+    when: /Apr 2, 2027.*10:00\s*AM/,
+  })
+  const closeDetails = async details => {
+    await details.getByRole('button', { name: 'Close', exact: true }).click()
+    await expect(details).toBeHidden()
+  }
+
+  const monthEntry = authorDay.getByRole('button', { name: authorEvent })
+  await monthEntry.click()
+  await closeDetails(await authorDetails())
+  await expect(monthEntry).toBeFocused()
+  await expect(page.getByTestId('month-view')).toBeVisible()
+
+  await authorDay.getByTestId('open-day').click()
+  const agenda = page.getByTestId('day-view')
+  await expect(agenda).toHaveAttribute('data-date', authorDate)
+  await agenda.getByTestId('event-time').click()
+  await closeDetails(await authorDetails())
+  await expect(agenda.getByRole('button', { name: 'Author Visit', exact: true })).toBeFocused()
+  await expect(agenda).toHaveAttribute('data-date', authorDate)
+
+  await page.getByTestId('show-month').click()
+  await dayCell(page, '2027-04-16').getByTestId('month-more').click()
+  const overflow = page.getByRole('dialog', { name: /April 16/ })
+  const overflowEntry = overflow.getByRole('button', { name: /^Chess Club,/ })
+  await overflowEntry.click()
+  const chessDetails = await expectPublishedDetails({
+    title: 'Chess Club',
+    description: 'Pair up for ten-minute lunch games. Spare boards are available.',
+    location: 'Room 108',
+    creator: 'Park, Elliot',
+    when: /Apr 16, 2027.*12:15\s*PM/,
+  })
+  await page.keyboard.press('Escape')
+  await expect(chessDetails).toBeHidden()
+  await expect(overflow).toBeVisible()
+  await expect(overflowEntry).toBeFocused()
+  await overflow.getByRole('button', { name: 'Close event list' }).click()
+
+  await page.setViewportSize({ width: 390, height: 900 })
+  await authorDay.getByTestId('open-day').click()
+  const compact = page.getByRole('region', { name: /Events for .*April 2$/ })
+  await compact.getByRole('button', { name: authorEvent }).press('Space')
+  await closeDetails(await authorDetails())
+  await expect(compact).toBeVisible()
+  expect(browserErrors).toEqual([])
+})
+
+test('an approver can edit and confirm deletion from calendar event details', async ({ page }) => {
+  const date = '2027-04-06'
+  const title = 'Calendar open house'
+  const updatedTitle = 'Evening open house'
+  const manager = await fixture.driver.signIn(approver)
+  expect(manager.status).toBe('ok')
+  const event = await fixture.driver.createEvent(manager.value.session, { date, time: '15:00', title })
+  expect(event.value?.status).toBe('approved')
+  await page.reload()
+
+  const day = dayCell(page, date)
+  const details = page.getByRole('dialog', { name: title, exact: true })
+  await day.getByRole('button', { name: /Calendar open house.*Published/ }).press('Enter')
+  await expect(details.getByText('Published', { exact: true })).toBeVisible()
+  await expect(details.getByRole('button', { name: 'Approve', exact: true })).toHaveCount(0)
+  await details.getByRole('button', { name: 'Edit', exact: true }).click()
+
+  const editor = page.getByRole('dialog', { name: 'Edit event' })
+  await expect(details).toBeHidden()
+  await expect(editor.getByLabel('Event title')).toHaveValue(title)
+  await editor.getByLabel('Event title').fill(updatedTitle)
+  await editor.getByRole('button', { name: 'Save changes', exact: true }).click()
+  await expect(editor).toBeHidden()
+  await expect(day.getByTestId('event-title')).toHaveText([updatedTitle])
+
+  const updatedDetails = page.getByRole('dialog', { name: updatedTitle, exact: true })
+  const entry = day.getByRole('button', { name: /Evening open house.*Published/ })
+  const confirmation = page.getByRole('dialog', { name: 'Delete event' })
+  await entry.click()
+  await updatedDetails.getByRole('button', { name: 'Delete', exact: true }).click()
+  await expect(updatedDetails).toBeHidden()
+  await expect(confirmation.getByText(`Delete ${updatedTitle}?`, { exact: true })).toBeVisible()
+  await confirmation.getByRole('button', { name: 'Keep it', exact: true }).click()
+  await expect(confirmation).toBeHidden()
+  await expect(entry).toBeVisible()
+
+  await entry.click()
+  await updatedDetails.getByRole('button', { name: 'Delete', exact: true }).click()
+  await confirmation.getByRole('button', { name: 'Delete', exact: true }).click()
+  await expect(confirmation).toBeHidden()
+  await expect(day.getByTestId('calendar-event')).toHaveCount(0)
+})
+
+test('deleting an event from overflow returns to the date when all remaining events fit', async ({ page }) => {
+  const date = '2027-04-22'
+  const title = 'After-school rehearsal'
+  const manager = await fixture.driver.signIn(approver)
+  const created = await fixture.driver.createEvent(manager.value.session, { title, date, time: '16:00' })
+  expect(created.status).toBe('ok')
+  await page.reload()
+  const day = dayCell(page, date)
+  await day.getByTestId('month-more').click()
+  const list = page.getByRole('dialog', { name: /April 22/ })
+  await list.getByRole('button', { name: /^After-school rehearsal,/ }).click()
+  await page.getByRole('dialog', { name: title }).getByRole('button', { name: 'Delete', exact: true }).click()
+  await page.getByTestId('confirm-delete').click()
+  await expect(list).toBeHidden()
+  await expect(day.getByTestId('month-more')).toHaveCount(0)
+  await expect(day.getByTestId('open-day')).toBeFocused()
+})
+
+async function overflowDismissPoint(target, list) {
+  await expect(target).toBeInViewport({ ratio: 1 })
+  const point = await center(target)
+  expect(await list.evaluate((panel, [x, y]) => {
+    const { left, right, top, bottom } = panel.getBoundingClientRect()
+    return x < left || x >= right || y < top || y >= bottom
+  }, point), 'The click point is outside the event list').toBe(true)
+  return point
+}
+
+test('wheel scrolling continues on the page after the event list reaches its bottom', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 640 })
+  await dayCell(page, '2027-04-16').getByTestId('month-more').click()
+  const list = page.getByRole('dialog', { name: /April 16/ })
+  const events = list.locator('.school-popover-events')
+  await expect(events).toBeInViewport()
+
+  const maxListScroll = await events.evaluate(element => element.scrollHeight - element.clientHeight)
+  const pageScroll = () => page.evaluate(() => window.scrollY)
+  const initialPageScroll = await pageScroll()
+  expect(maxListScroll).toBeGreaterThan(1)
+  expect(await page.evaluate(() => document.scrollingElement.scrollHeight - window.innerHeight))
+    .toBeGreaterThan(initialPageScroll)
+
+  await page.mouse.move(...await center(events))
+  await page.mouse.wheel(0, maxListScroll + 1)
+  await expect.poll(() => events.evaluate(element => element.scrollTop)).toBeGreaterThanOrEqual(maxListScroll - 1)
+  expect(await pageScroll()).toBe(initialPageScroll)
+
+  await page.mouse.wheel(0, 120)
+  await expect.poll(pageScroll).toBeGreaterThan(initialPageScroll)
+  await expect(list).toBeVisible()
+})
+
+test('the first click on another date dismisses overflow and the second opens its agenda', async ({ page }) => {
+  const selected = dayCell(page, '2027-04-16')
+  const destinationDate = '2027-04-03'
+  const destination = dayCell(page, destinationDate).getByTestId('open-day')
+  const list = page.getByRole('dialog', { name: /April 16/ })
+  await selected.getByTestId('month-more').click()
+  await expect(list).toBeVisible()
+
+  const point = await overflowDismissPoint(destination, list)
+  await page.mouse.click(...point)
+  await expect(list).toBeHidden()
+  await expect(page.getByTestId('month-view')).toHaveAttribute('data-month', '2027-04')
+  await expect(selected).toHaveClass(/school-month-selected/)
+  await expect(page.getByTestId('day-view')).toHaveCount(0)
+
+  await page.mouse.click(...point)
+  await expect(page.getByTestId('day-view')).toHaveAttribute('data-date', destinationDate)
+})
+
+test('clicking a month event or its edit button behind overflow only dismisses the list', async ({ page }) => {
+  const more = dayCell(page, '2027-04-16').getByTestId('month-more')
+  const list = page.getByRole('dialog', { name: /April 16/ })
+  const otherDay = dayCell(page, '2027-04-05')
+
+  for (const [target, title] of [
+    [otherDay.getByRole('button', { name: /Art Club.*Published/ }), 'Art Club'],
+    [otherDay.getByRole('button', { name: 'Edit Art Club', exact: true }), 'Edit event'],
+  ]) {
+    await test.step(`Dismiss the list before opening ${title}`, async () => {
+      await more.click()
+      await expect(list).toBeVisible()
+
+      const point = await overflowDismissPoint(target, list)
+      await page.mouse.click(...point)
+      await expect(list).toBeHidden()
+      await expect(page.getByRole('dialog')).toHaveCount(0)
+
+      await page.mouse.click(...point)
+      const dialog = page.getByRole('dialog', { name: title, exact: true })
+      await expect(dialog).toBeVisible()
+      await dialog.getByRole('button', { name: 'Close dialog' }).click()
+    })
+  }
+})
+
+test.describe('compact calendar with touch', () => {
+  test.use({ viewport: { width: 540, height: 900 }, hasTouch: true })
+
+  test('the first tap dismisses overflow and the second selects the date', async ({ page }) => {
+    const selected = page.getByRole('region', { name: /Events for .*April 16/ })
+    const destination = dayCell(page, '2027-04-03')
+    const list = page.getByRole('dialog', { name: /April 16/ })
+    await selected.getByTestId('month-more').tap()
+    await expect(list).toBeVisible()
+
+    const point = await overflowDismissPoint(destination.getByTestId('open-day'), list)
+    await page.touchscreen.tap(...point)
+    await expect(list).toBeHidden()
+    await expect(selected).toBeVisible()
+    await expect(dayCell(page, '2027-04-16')).toHaveClass(/school-month-selected/)
+
+    await page.touchscreen.tap(...point)
+    await expect(destination).toHaveClass(/school-month-selected/)
+    await expect(page.getByRole('region', { name: /Events for .*April 3$/ })).toBeVisible()
+  })
+})
 
 test('month navigation keeps the selected date only when its cell is visible', async ({ page }) => {
   await dayCell(page, '2027-04-01').getByTestId('open-day').click()
@@ -260,12 +494,27 @@ async function expectMonthEventRow(scope, title, status, borderStyle) {
   })
 }
 
+test('Space starts a keyboard move from the event list without opening details', async ({ page }) => {
+  await dayCell(page, '2027-04-16').getByTestId('month-more').click()
+  const list = page.getByRole('dialog', { name: /April 16/ })
+  const entry = list.getByRole('button', { name: /^Chess Club,/ })
+  await entry.press('Space')
+
+  const cancel = page.getByRole('button', { name: 'Cancel move', exact: true })
+  await expect(cancel).toBeVisible()
+  await expect(list).toBeHidden()
+  await expect(page.getByTestId('event-detail')).toHaveCount(0)
+  await cancel.click()
+  await expect(list).toBeVisible()
+  await expect(entry).toBeFocused()
+})
+
 test('move a hidden session across months, edit it, and undo only the edit', async ({ page }) => {
   const busyDay = dayCell(page, '2027-04-16')
   await busyDay.getByText('+8 more', { exact: true }).click()
-  const list = page.getByRole('dialog')
+  const list = page.getByRole('dialog', { name: /April 16/ })
   await expect(list.getByTestId('popover-event')).toHaveCount(10)
-  const start = await center(list.getByRole('button', { name: /^Move Chess Club,/ }))
+  const start = await center(list.getByRole('button', { name: /^Chess Club,/ }))
   const arrow = await center(page.getByTestId('month-next'))
   await page.mouse.move(...start)
   await page.mouse.down()
@@ -283,6 +532,7 @@ test('move a hidden session across months, edit it, and undo only the edit', asy
 
   const moved = dayCell(page, '2027-05-12')
   await expect(moved.getByTestId('event-title')).toHaveText('Chess Club')
+  await expect(page.getByTestId('event-detail')).toHaveCount(0)
   await moved.getByRole('button', { name: 'Edit Chess Club' }).click()
   await page.getByLabel('Start time').fill('14:45')
   await page.getByRole('button', { name: 'Save changes' }).click()
@@ -563,21 +813,28 @@ test.describe('pending requests on the calendar', () => {
     await expect(agenda.getByText('Pending request', { exact: true })).toHaveCount(0)
   })
 
-  test('updates the open agenda after approving a request from the calendar', async ({ page }) => {
+  test('updates the open agenda after approving a request from its details', async ({ page }) => {
     await dayCell(page, '2027-04-20').getByTestId('open-day').click()
     const agenda = page.getByTestId('day-view')
     const title = 'Family Reading Night'
+    const entry = agenda.getByRole('button', { name: title, exact: true })
     await expect(page.getByText('0 of 10 published · 1 pending', { exact: true })).toBeVisible()
     await expect(agenda.getByText('Pending request', { exact: true })).toBeVisible()
 
-    await agenda.getByRole('button', { name: 'Edit ' + title }).click()
-    const editor = page.getByRole('dialog', { name: 'Edit event' })
-    await editor.getByRole('button', { name: 'Save and approve' }).click()
+    const details = page.getByRole('dialog', { name: title, exact: true })
+    await entry.click()
+    await expect(details.getByText('Pending approval', { exact: true })).toBeVisible()
+    await details.getByRole('button', { name: 'Approve', exact: true }).click()
 
-    await expect(editor).toBeHidden()
+    await expect(details).toBeHidden()
     await expect(page.getByText('1 of 10 published · 0 pending', { exact: true })).toBeVisible()
     await expect(agenda.getByTestId('event-title')).toHaveText([title])
     await expect(agenda.getByText('Pending request', { exact: true })).toHaveCount(0)
+
+    await entry.click()
+    await expect(details.getByText('Published', { exact: true })).toBeVisible()
+    await expect(details.getByTestId('event-approver')).toHaveText('Lane, Robin')
+    await expect(details.getByRole('button', { name: 'Approve', exact: true })).toHaveCount(0)
   })
 
   test('rejects a published event drop onto a full day and preserves both dates', async ({ page }) => {

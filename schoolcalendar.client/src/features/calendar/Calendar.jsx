@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import EventDetails from '../events/EventDetails'
 import CalendarToolbar from './CalendarToolbar'
 import MonthGrid from './MonthGrid'
 import { CompactSummary, DatePopover, DayAgenda } from './CalendarViews'
@@ -11,12 +12,13 @@ function periodSelection(date, mode) {
   return { date, month: monthStart(date), mode }
 }
 
-export default function Calendar({ user, onEdit, refreshKey, lastChange, onMove, onUndo, notice, focusDateRequest, onDateChange }) {
+export default function Calendar({ user, onApprove, onDelete, onEdit, refreshKey, lastChange, onMove, onUndo, notice, focusDateRequest, onDateChange }) {
   const rootRef = useRef(null)
   const focusRef = useRef(null)
   const [period, setPeriod] = useState(() => periodSelection(initialDate, 'month'))
   const [handledRequest, setHandledRequest] = useState(null)
   const [popup, setPopup] = useState(null)
+  const [detailId, setDetailId] = useState(null)
   const [choosing, setChoosing] = useState(null)
   const [busy, setBusy] = useState(false)
   const [feedback, setFeedback] = useState(null)
@@ -26,12 +28,14 @@ export default function Calendar({ user, onEdit, refreshKey, lastChange, onMove,
   const { events, loading, error } = useMonthEvents(month, refreshKey, isApprover)
   const byDate = useMemo(() => groupEvents(events), [events])
   const records = useMemo(() => new Map(events.map(event => [String(event.id), event])), [events])
+  const detailEvent = records.get(detailId)
   const eventsToday = byDate.get(date) ?? noEvents
   const inDayView = mode === 'day'
   const gridRange = monthGridRange(month)
   const visibleSelectedDate = date >= gridRange.from && date <= gridRange.to
 
   if (!isApprover && choosing) setChoosing(null)
+  if (detailId !== null && !detailEvent) setDetailId(null)
 
   if (focusDateRequest && focusDateRequest.nonce !== handledRequest) {
     setHandledRequest(focusDateRequest.nonce)
@@ -57,7 +61,12 @@ export default function Calendar({ user, onEdit, refreshKey, lastChange, onMove,
   }, [])
 
   const closePopup = useCallback((restoreFocus = false) => {
-    if (restoreFocus && popup?.trigger.isConnected) popup.trigger.focus({ preventScroll: true })
+    if (restoreFocus && popup) {
+      const root = rootRef.current
+      const target = root?.querySelector(`[data-more-date="${popup.date}"]`)
+        ?? root?.querySelector(`[data-date="${popup.date}"] [data-testid="open-day"]`)
+      target?.focus({ preventScroll: true })
+    }
     setPopup(null)
   }, [popup])
 
@@ -168,7 +177,7 @@ export default function Calendar({ user, onEdit, refreshKey, lastChange, onMove,
   }
 
   function activateEvent(event) {
-    if (!busy && !choosing && !drag) openDay(event.date)
+    if (!busy && !choosing && !drag) setDetailId(String(event.id))
   }
 
   function navigate(distance) {
@@ -222,7 +231,7 @@ export default function Calendar({ user, onEdit, refreshKey, lastChange, onMove,
     : (feedback && feedback.notice === notice ? feedback.message : notice) || error || (loading ? 'Loading events…' : '')
   const showUndo = Boolean(isApprover && lastChange && !drag && !choosing)
 
-  return (
+  const calendar = (
     <section
       ref={rootRef}
       className={`school-calendar${drag ? ' school-calendar-dragging' : ''}`}
@@ -236,7 +245,7 @@ export default function Calendar({ user, onEdit, refreshKey, lastChange, onMove,
         onNavigate={navigate} onModeChange={changeMode}
       />
 
-      {inDayView ? <DayAgenda date={date} events={eventsToday} isApprover={isApprover} onEdit={editAction} loading={loading} /> : (
+      {inDayView ? <DayAgenda date={date} events={eventsToday} isApprover={isApprover} onEvent={activateEvent} onEdit={editAction} loading={loading} /> : (
         <>
           <MonthGrid
             month={month} selectedDate={date} byDate={byDate} compact={compact} loading={loading}
@@ -261,7 +270,7 @@ export default function Calendar({ user, onEdit, refreshKey, lastChange, onMove,
       {popup && !drag && !inDayView && (
         <DatePopover
           popup={popup} rootRef={rootRef} events={byDate.get(popup.date) ?? noEvents}
-          onClose={closePopup} onDay={openDay} onMove={moveAction} onEdit={editAction}
+          onClose={closePopup} onDay={openDay} onEvent={activateEvent} onChoose={moveAction} onEdit={editAction}
         />
       )}
 
@@ -275,5 +284,20 @@ export default function Calendar({ user, onEdit, refreshKey, lastChange, onMove,
         </span>
       )}
     </section>
+  )
+
+  return (
+    <>
+      {calendar}
+      {detailEvent && (
+        <EventDetails
+          event={detailEvent}
+          onClose={() => setDetailId(null)}
+          onApprove={isApprover ? onApprove : undefined}
+          onDelete={isApprover ? onDelete : undefined}
+          onEdit={editAction}
+        />
+      )}
+    </>
   )
 }

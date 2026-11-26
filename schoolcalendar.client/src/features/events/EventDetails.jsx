@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Check } from 'lucide-react'
 import Modal from '../../components/Modal'
 import EventImage from '../../components/EventImage'
@@ -5,9 +6,26 @@ import { localSchedule } from './eventFields'
 
 const stamp = (value) => new Date(value).toLocaleString()
 
-export default function EventDetails({ event, onClose, onApprove, approvalDisabled, approving, approvalError }) {
+export default function EventDetails({ event, onClose, onApprove, onEdit, onDelete }) {
+  const [approving, setApproving] = useState(false)
+  const [approvalError, setApprovalError] = useState('')
+  async function approve() {
+    setApproving(true)
+    setApprovalError('')
+    try {
+      await onApprove(event)
+      onClose()
+    } catch (err) {
+      setApprovalError(err.message)
+      setApproving(false)
+    }
+  }
   const close = () => {
     if (!approving) onClose()
+  }
+  function openAction(action) {
+    onClose()
+    action(event)
   }
 
   return (
@@ -41,15 +59,25 @@ export default function EventDetails({ event, onClose, onApprove, approvalDisabl
           </p>
         )}
         <footer className="form-actions event-detail-actions">
+          {onDelete && (
+            <button type="button" className="event-detail-delete" disabled={approving} onClick={() => openAction(onDelete)}>
+              Delete
+            </button>
+          )}
           <button type="button" onClick={close} disabled={approving} data-testid="close-detail">
             Close
           </button>
+          {onEdit && (
+            <button type="button" className={event.status === 'approved' ? 'primary' : undefined} disabled={approving} onClick={() => openAction(onEdit)}>
+              Edit
+            </button>
+          )}
           {event.status === 'pending' && onApprove && (
             <button
               type="button"
               className="primary"
-              onClick={onApprove}
-              disabled={approvalDisabled}
+              onClick={approve}
+              disabled={approving}
               data-testid="approve-detail"
             >
               <Check size={15} aria-hidden="true" />

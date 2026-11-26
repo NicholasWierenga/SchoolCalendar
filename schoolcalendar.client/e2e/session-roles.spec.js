@@ -85,6 +85,23 @@ test('updates the open calendar and management screens after another manager cha
   await expect(page.getByTestId('nav-new-event')).toHaveText('Propose event')
 })
 
+test('closes pending calendar details when an approver becomes a teacher', async ({ page }) => {
+  const id = await openAccount(page, 'detailviewer', 'approver')
+  const day = page.locator('[data-testid="month-day"][data-date="2027-04-22"]')
+  await day.getByRole('button', { name: /Seedling Exchange.*Pending approval/ }).click()
+  const details = page.getByRole('dialog', { name: 'Seedling Exchange' })
+  await expect(details.getByRole('button', { name: 'Approve', exact: true })).toBeVisible()
+
+  await changeRole(id, 'normal')
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(details).toBeHidden()
+  await expect(day.getByTestId('event-title')).toHaveText(['Earth Day Walk'])
+  await day.getByRole('button', { name: /Earth Day Walk.*Published/ }).click()
+  const published = page.getByRole('dialog', { name: 'Earth Day Walk' })
+  await expect(published.getByText('Published', { exact: true })).toBeVisible()
+  await expect(published.getByRole('button', { name: /^(Approve|Edit|Delete)$/ })).toHaveCount(0)
+})
+
 test('returns from My Events to Calendar when a teacher becomes an approver', async ({ page }) => {
   const id = await openAccount(page, 'mypagepromotion', 'normal')
   const nav = page.getByRole('navigation')

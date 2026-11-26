@@ -237,7 +237,7 @@ html:has(.school-calendar) { scrollbar-gutter: stable; }
 .school-calendar .school-month-summary:hover { background: var(--event-hover); }
 
 .school-month-line { display: flex; align-items: baseline; gap: 4px; }
-.school-month-single .school-month-line { flex-wrap: wrap; row-gap: 0; }
+.school-month-single .school-month-line { flex-wrap: wrap; row-gap: 0; align-items: center; }
 .school-month-line time {
   flex: none;
   color: var(--forest);
@@ -321,6 +321,7 @@ html:has(.school-calendar) { scrollbar-gutter: stable; }
   gap: 4px 12px;
   padding: 13px 4px;
   border-bottom: 1px solid var(--line);
+  cursor: pointer;
 }
 
 .school-agenda-event[data-more-at-start] { padding-bottom: 4px; border-color: transparent; }
@@ -389,6 +390,17 @@ html:has(.school-calendar) { scrollbar-gutter: stable; }
 
 .school-pending-label svg { flex: none; width: 12px; height: 12px; }
 .school-agenda-description h3 { margin: 0; font-size: 16px; font-weight: 650; line-height: 1.25; }
+.school-calendar .school-agenda-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+.school-agenda-title:hover { text-decoration: underline; }
 .school-agenda-description p { margin: 4px 0 0; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
 .school-agenda-location { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .school-agenda-location svg { flex: none; width: 14px; height: 14px; color: var(--forest); }
@@ -431,7 +443,7 @@ html:has(.school-calendar) { scrollbar-gutter: stable; }
   min-height: 0;
   max-height: min(65vh, 464px);
   overflow-y: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-x: contain;
   border-block: 1px solid var(--line);
 }
 

@@ -17,9 +17,9 @@ Open **http://localhost:5187**. The first start creates the database, applies mi
 | `approver` | `Calendar1!` | Publish and edit events, review proposals, and manage users and locations |
 | `teacher` | `Calendar1!` | View the calendar, submit proposals, and review their status in **My Events** |
 
-Teachers can open **My Events** to check the date, time, location, and details of their own pending and published submissions. Approval adds the event to the school-wide calendar. The teacher who submitted it sees a blue background and a thicker left border.
+Teachers can select a row in **My Events** to read the details of their own pending or published submissions. Approvers can select a row in **Events** to see the details or use the row’s action buttons directly. Approval adds the event to the school-wide calendar. The teacher who submitted it sees a blue background and a thicker left border.
 
-Approvers can review submissions under **Events → Pending requests** or open the pencil on a pending calendar entry to edit or approve it. Only published events appear on the school-wide calendar. In the approver’s Month view, published events get first choice of the two visible slots. The Day view includes every request at its proposed start time, marked with a dashed outline and a clock. Only published events count toward the daily limit of ten.
+Click an event in Month, Day, or the **+ more** list to read its details. Teachers can read any published event. Approvers can edit or delete an event from its details and approve a pending request there or under **Events → Pending requests**. The pencil opens the editor directly. In the approver’s Month view, published events get first choice of the two visible slots. The Day view includes every request at its proposed start time, marked with a dashed outline and a clock. Only published events count toward the daily limit of ten.
 
 The demo opens in April 2027. April 16 has ten approved sessions. Open **+8 more** to see the full day in time order. Drag a session onto a date, or hold it over a month arrow to reach another month. The first page turn is immediate and repeats every 0.8 seconds. Escape cancels. Undo restores the last successful move or pencil edit. A selected date stays highlighted across month changes only while its cell is visible.
 

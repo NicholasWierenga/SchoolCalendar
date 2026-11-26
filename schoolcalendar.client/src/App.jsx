@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { api } from './api'
 import AppHeader from './components/AppHeader'
+import ConfirmDelete from './components/ConfirmDelete'
 import SignIn from './features/auth/SignIn'
 import Calendar from './features/calendar/Calendar'
 import { initialDate } from './features/calendar/calendarDates'
@@ -14,7 +15,7 @@ function SchoolCalendar({ user, onUserChange }) {
   const sessionRequest = useRef(null)
   const [page, setPage] = useState('calendar')
   const [date, setDate] = useState(initialDate)
-  const [editor, setEditor] = useState(null)
+  const [eventDialog, setEventDialog] = useState(null)
   const [revision, setRevision] = useState(0)
   const [focusDateRequest, setFocusDateRequest] = useState(null)
   const [notice, setNotice] = useState('')
@@ -34,8 +35,15 @@ function SchoolCalendar({ user, onUserChange }) {
     setNotice('')
     refresh()
   }
+  const editEvent = (event) => setEventDialog({ action: 'edit', event })
+  const confirmDelete = (event) => setEventDialog({ action: 'delete', event })
+  const closeEventDialog = () => setEventDialog(null)
+  function refreshIfStale(error) {
+    if (error.status === 404 || error.code === 'conflict') refresh()
+    throw error
+  }
   async function saveEvent(values) {
-    if (editor.event) return changes.edit(editor.event, values)
+    if (eventDialog.event) return changes.edit(eventDialog.event, values).catch(refreshIfStale)
     const result = await api('/events', { method: 'POST', body: { ...values, expectedRole: user.role } })
     saved(result, result.title + (result.status === 'approved' ? ' published.' : ' submitted for approval.'))
     return result
@@ -45,10 +53,16 @@ function SchoolCalendar({ user, onUserChange }) {
     setNotice(message)
     refresh()
   }
+  async function deleteEvent(event) {
+    await api('/events/' + event.id + '?version=' + encodeURIComponent(event.version), {
+      method: 'DELETE',
+    }).catch(refreshIfStale)
+    eventAdminChanged(event.id, event.title + ' deleted.')
+  }
   async function approveEvent(event, values) {
     const body = { version: event.version }
     if (values) body.changes = changedFields(eventFields(event), values)
-    const published = await api('/events/' + event.id + '/approve', { method: 'POST', body })
+    const published = await api('/events/' + event.id + '/approve', { method: 'POST', body }).catch(refreshIfStale)
     eventAdminChanged(event.id, published.title + ' approved and published.')
     if (page === 'calendar') focusCalendar(published.date)
   }
@@ -61,7 +75,7 @@ function SchoolCalendar({ user, onUserChange }) {
       if (request.signal.aborted) return
       if (currentUser.role !== user.role) setPage('calendar')
       if (currentUser.role !== 'approver') {
-        setEditor(current => current?.event ? null : current)
+        setEventDialog(current => current?.event ? null : current)
       }
       onUserChange(currentUser)
     } catch (err) {
@@ -103,7 +117,7 @@ function SchoolCalendar({ user, onUserChange }) {
         user={user}
         page={page}
         onNavigate={navigate}
-        onNew={() => setEditor({ date })}
+        onNew={() => setEventDialog({ action: 'create', date })}
         onSignOut={signOut}
       />
       <main className="workspace">
@@ -125,7 +139,9 @@ function SchoolCalendar({ user, onUserChange }) {
           <Calendar
             user={user}
             onDateChange={setDate}
-            onEdit={(event) => setEditor({ event })}
+            onEdit={editEvent}
+            onDelete={confirmDelete}
+            onApprove={approveEvent}
             refreshKey={revision}
             lastChange={changes.lastChange}
             onMove={changes.move}
@@ -137,9 +153,9 @@ function SchoolCalendar({ user, onUserChange }) {
         {user.role === 'approver' && page === 'events' && (
           <EventsPage
             revision={revision}
-            onEdit={(event) => setEditor({ event })}
+            onEdit={editEvent}
+            onDelete={confirmDelete}
             onApprove={approveEvent}
-            onChange={eventAdminChanged}
           />
         )}
         {user.role === 'normal' && page === 'my-events' && (
@@ -149,14 +165,22 @@ function SchoolCalendar({ user, onUserChange }) {
           <DirectoryPage key={page} kind={page === 'users' ? 'user' : 'location'} onChange={directoryChanged} />
         )}
       </main>
-      {editor && (
+      {eventDialog?.action === 'delete' && (
+        <ConfirmDelete
+          title="Delete event"
+          name={eventDialog.event.title}
+          onConfirm={() => deleteEvent(eventDialog.event)}
+          onClose={closeEventDialog}
+        />
+      )}
+      {eventDialog && eventDialog.action !== 'delete' && (
         <EventForm
-          event={editor.event}
-          date={editor.date}
+          event={eventDialog.event}
+          date={eventDialog.date}
           user={user}
           onSave={saveEvent}
           onApprove={approveEvent}
-          onClose={() => setEditor(null)}
+          onClose={closeEventDialog}
         />
       )}
     </>

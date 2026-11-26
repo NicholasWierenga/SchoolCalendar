@@ -29,6 +29,7 @@ const myEventsButton = (page) => page.getByRole('navigation').getByRole('button'
 const eventRow = (section, title) => section.getByRole('row').filter({
   has: section.page().getByRole('rowheader').getByText(title, { exact: true }),
 })
+const eventTitleButton = (row, title) => row.getByRole('rowheader').getByRole('button', { name: title, exact: true })
 const approveButton = (container) => container.getByRole('button', { name: /^Approve\b/ })
 const saveAndApproveButton = (editor) => editor.getByRole('button', { name: 'Save and approve', exact: true })
 const saveChangesButton = (editor) => editor.getByRole('button', { name: 'Save changes', exact: true })
@@ -64,7 +65,7 @@ async function submitProposal(page, title, date, { time, location, description }
   await expect(proposal).toBeHidden()
 }
 
-test('shows pending requests before published events and approves a request from its row', async ({ page }) => {
+test('keeps direct approval, editing, and confirmed deletion on management rows', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await signIn(page)
   await expect(page.getByRole('navigation').getByRole('button', { name: 'Approval queue' })).toHaveCount(0)
@@ -77,17 +78,31 @@ test('shows pending requests before published events and approves a request from
   const title = 'Family Reading Night'
   const pending = eventRow(pendingRequests(page), title)
   const published = eventRow(publishedEvents(page), title)
+  const openDialogs = page.locator('dialog[open]')
   await expect(published).toHaveCount(0)
+  await expect(pending.getByRole('button')).toHaveCount(4)
   await expect(approveButton(pending)).toBeInViewport()
   await approveButton(pending).click()
   await expect(pending).toHaveCount(0)
   await expect(published).toBeVisible()
+  await expect(openDialogs).toHaveCount(0)
+  await expect(published.getByRole('button')).toHaveCount(3)
   await expect(approveButton(published)).toHaveCount(0)
 
   await published.getByRole('button', { name: 'Edit ' + title }).click()
   const editor = page.getByRole('dialog', { name: 'Edit event' })
   await expect(saveChangesButton(editor)).toBeVisible()
   await expect(saveAndApproveButton(editor)).toHaveCount(0)
+  await expect(openDialogs).toHaveCount(1)
+  await editor.getByRole('button', { name: 'Cancel', exact: true }).click()
+
+  await published.getByRole('button', { name: 'Delete ' + title }).click()
+  const confirmation = page.getByRole('dialog', { name: 'Delete event' })
+  await expect(confirmation.getByText(title, { exact: true })).toBeVisible()
+  await expect(openDialogs).toHaveCount(1)
+  await confirmation.getByRole('button', { name: 'Delete', exact: true }).click()
+  await expect(published).toHaveCount(0)
+  await expect(openDialogs).toHaveCount(0)
 })
 
 test('approves a request from its details and shows who approved it', async ({ page }) => {
@@ -97,13 +112,17 @@ test('approves a request from its details and shows who approved it', async ({ p
   const title = 'Seedling Exchange'
   const pending = eventRow(pendingRequests(page), title)
   const details = page.getByRole('dialog', { name: title })
-  await pending.getByRole('button', { name: 'View ' + title }).click()
+  await expect(pendingRequests(page).or(publishedEvents(page)).getByRole('columnheader', { name: 'Actions' })).toHaveCount(2)
+  await pending.getByRole('cell', { name: 'Reyes, Mira', exact: true }).click()
   await expect(details.getByText('Pending approval', { exact: true })).toBeVisible()
+  await expect(details.getByRole('button', { name: 'Edit', exact: true })).toBeVisible()
+  await expect(details.getByRole('button', { name: 'Delete', exact: true })).toBeVisible()
   await approveButton(details).click()
   await expect(details).toBeHidden()
   await expect(pending).toHaveCount(0)
 
-  await eventRow(publishedEvents(page), title).getByRole('button', { name: 'View ' + title }).click()
+  const publishedTitle = eventTitleButton(eventRow(publishedEvents(page), title), title)
+  await publishedTitle.press('Enter')
   await expect(details.getByText('Published', { exact: true })).toBeVisible()
   await expect(details.getByTestId('event-approver')).toHaveText('Lane, Robin')
   await expect(approveButton(details)).toHaveCount(0)
@@ -143,7 +162,7 @@ test('shows the submitter and approver names as last, first middle', async ({ pa
   await signIn(page, namedApprover)
   await openEvents(page)
   await approveButton(eventRow(pendingRequests(page), title)).click()
-  await eventRow(publishedEvents(page), title).getByRole('button', { name: 'View ' + title }).click()
+  await eventTitleButton(eventRow(publishedEvents(page), title), title).click()
   const details = page.getByRole('dialog', { name: title })
   await expect(details.getByTestId('event-creator')).toHaveText('Gomez, Avery Jo')
   await expect(details.getByTestId('event-approver')).toHaveText('Fields, Nora Lee')
@@ -166,13 +185,13 @@ test('backdrop clicks dismiss event dialogs and discard unsaved edits', async ({
   const path = '/api/events/manage'
   const original = (await listEvents(page, path)).find((event) => event.title === title)
   expect(original).toBeDefined()
-  const viewButton = row.getByRole('button', { name: 'View ' + title })
+  const titleButton = eventTitleButton(row, title)
   const deleteButton = row.getByRole('button', { name: 'Delete ' + title })
   await deleteButton.scrollIntoViewIfNeeded()
   const box = await deleteButton.boundingBox()
   // Click the backdrop over Delete to catch accidental clicks through to the row.
   const backdrop = [box.x + box.width / 2, box.y + box.height / 2]
-  await viewButton.click()
+  await titleButton.click()
   const details = page.getByRole('dialog', { name: title })
   const heading = details.getByRole('heading', { name: title })
   await heading.click()
@@ -180,7 +199,7 @@ test('backdrop clicks dismiss event dialogs and discard unsaved edits', async ({
 
   await page.mouse.click(...backdrop)
   await expect(page.getByRole('dialog')).toHaveCount(0)
-  await expect(viewButton).toBeFocused()
+  await expect(titleButton).toBeFocused()
 
   const editButton = row.getByRole('button', { name: 'Edit ' + title })
   const editor = page.getByRole('dialog', { name: 'Edit event' })
@@ -305,6 +324,7 @@ test('My Events shows only the teacher’s own requests and refreshes after appr
     role: 'normal',
   }
   const date = '2027-04-23'
+  const schedule = /Apr 23, 2027, 3:45\s*PM/i
   const title = 'Student Podcast Workshop'
   const description = 'Bring a recording or an idea for a two-minute segment.'
   const directTitle = 'School Announcements'
@@ -336,18 +356,26 @@ test('My Events shows only the teacher’s own requests and refreshes after appr
   await expect(request).toBeVisible()
   await expect(pending.getByRole('rowheader')).toHaveCount(1)
   await expect(published.getByRole('rowheader')).toHaveCount(0)
+  await expect(pending.getByRole('columnheader')).toHaveText(['Event', 'Scheduled for', 'Submitted by'])
   await expect(request.getByRole('button')).toHaveCount(1)
-  await request.getByRole('button', { name: 'View ' + title, exact: true }).click()
+  const requestTitle = eventTitleButton(request, title)
+  await expect(requestTitle).toHaveAttribute('aria-haspopup', 'dialog')
+  await request.getByRole('cell', { name: schedule }).click()
 
   const details = page.getByRole('dialog', { name: title })
   await expect(details.getByText('Pending approval', { exact: true })).toBeVisible()
-  await expect(details.getByText(/Apr 23, 2027, 3:45\s*PM/i)).toBeVisible()
+  await expect(details.getByText(schedule)).toBeVisible()
   await expect(details.getByText('Library', { exact: true })).toBeVisible()
   await expect(details.getByText(description, { exact: true })).toBeVisible()
   await expect(details.getByTestId('event-creator')).toHaveText('Chen, Morgan')
   await expect(details.getByTestId('event-approver')).toHaveCount(0)
   await expect(details.getByRole('button', { name: /^(Approve|Edit|Delete)\b/ })).toHaveCount(0)
   await details.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(requestTitle).toBeFocused()
+  await page.keyboard.press('Space')
+  await expect(details).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(details).toBeHidden()
 
   await page.getByRole('navigation').getByRole('button', { name: 'Calendar', exact: true }).click()
   const day = page.locator(`[data-testid="month-day"][data-date="${date}"]`)
@@ -374,11 +402,13 @@ test('My Events shows only the teacher’s own requests and refreshes after appr
   await expect(request).toHaveCount(0)
   await expect(pending.getByRole('rowheader')).toHaveCount(0)
   await expect(published.getByRole('rowheader')).toHaveCount(1)
+  await expect(published.getByRole('columnheader')).toHaveText(['Event', 'Scheduled for', 'Approved by'])
   await expect(publication.getByRole('button')).toHaveCount(1)
-  await publication.getByRole('button', { name: 'View ' + title, exact: true }).click()
+  await publication.getByRole('cell', { name: 'Lane, Robin', exact: true }).click()
   await expect(details.getByText('Published', { exact: true })).toBeVisible()
   await expect(details.getByTestId('event-approver')).toHaveText('Lane, Robin')
   await expect(details.getByText('Approved', { exact: true })).toBeVisible()
+  await expect(details.getByRole('button', { name: /^(Approve|Edit|Delete)\b/ })).toHaveCount(0)
 })
 
 test('shows built-in event images inside the picker without a separate preview', async ({ page }) => {
@@ -519,7 +549,7 @@ test('shows the uploaded thumbnail in the event image picker before and after sa
   await uploaded.click()
   await editor.getByRole('button', { name: 'Cancel', exact: true }).click()
 
-  await row.getByRole('button', { name: 'View Author Visit' }).click()
+  await eventTitleButton(row, 'Author Visit').click()
   const details = page.getByRole('dialog', { name: 'Author Visit' })
   await expect(details.getByTestId('event-image')).toHaveAttribute('src', imageSource)
 })

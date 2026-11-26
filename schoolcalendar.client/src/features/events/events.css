@@ -49,6 +49,33 @@
   overflow-wrap: anywhere;
 }
 
+.event-records tbody tr:not([aria-busy="true"]) {
+  cursor: pointer;
+}
+
+.event-records tbody tr:focus-within {
+  background: var(--surface);
+}
+
+.event-records .event-row-title {
+  display: inline;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--forest);
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
+@media (hover: hover) {
+  .event-records tbody tr:not([aria-busy="true"]):hover {
+    background: var(--surface);
+  }
+  .event-row-title:hover:not(:disabled) {
+    text-decoration: underline;
+  }
+}
+
 .event-records .approve-button {
   white-space: nowrap;
   color: var(--forest);
@@ -59,14 +86,20 @@
 }
 
 .event-approval-error {
-  max-width: 36ch;
+  max-width: 90%;
   margin-inline-start: auto;
   text-align: right;
 }
 
 .event-detail-actions {
+  flex-wrap: wrap;
   margin-top: 16px;
   padding: 12px 0 0;
+}
+
+.event-detail-actions .event-detail-delete {
+  margin-inline-end: auto;
+  color: var(--danger);
 }
 
 .event-mobile-label {
@@ -104,7 +137,7 @@
   }
 
   .event-records tbody th,
-  .event-records td:last-child {
+  .event-records .event-actions-cell {
     grid-column: 1 / -1;
   }
 

@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { Clock, GripVertical, MapPin, Pencil, X } from 'lucide-react'
 import EventImage from '../../components/EventImage'
-import { dailyCapacity, formatDay, formatTime, formatTimeParts, publishedCount } from './calendarDates'
+import { openEventFromRow } from '../events/openEventFromRow'
+import { dailyCapacity, formatDay, formatTime, formatTimeParts, monthEventLimit, publishedCount } from './calendarDates'
 import { monthOverflowLabel, monthPreview } from './monthPreview'
 
 const ownershipLabel = 'Submitted by you'
@@ -27,6 +28,29 @@ function EditButton({ event, onEdit, small = false }) {
   )
 }
 
+function EventSummaryButton({ event, onActivate, onChoose, title, children, ...props }) {
+  const moveHint = onChoose ? 'Press Space to move this event.' : undefined
+  return (
+    <button
+      type="button"
+      aria-haspopup="dialog"
+      aria-description={moveHint}
+      title={[title, moveHint].filter(Boolean).join(' · ') || undefined}
+      aria-keyshortcuts={onChoose ? 'Space' : undefined}
+      data-drag-event={onChoose ? event.id : undefined}
+      onClick={() => onActivate(event)}
+      onKeyDown={keyEvent => {
+        if (keyEvent.key !== ' ' || !onChoose) return
+        keyEvent.preventDefault()
+        if (!keyEvent.repeat) onChoose(event)
+      }}
+      {...props}
+    >
+      {children}
+    </button>
+  )
+}
+
 export function MonthEvent({ event, single, onActivate, onChoose, onEdit }) {
   const pending = event.status === 'pending'
   const own = isOwnPublishedEvent(event)
@@ -35,20 +59,14 @@ export function MonthEvent({ event, single, onActivate, onChoose, onEdit }) {
   const summary = [time, event.title, event.location, status, own && ownershipLabel].filter(Boolean).join(' · ')
   return (
     <div className={`school-month-item${pending ? ' school-month-pending' : ''}${own ? ' school-event-own' : ''}`} data-testid="calendar-event">
-      <button
-        type="button"
+      <EventSummaryButton
+        event={event}
+        onActivate={onActivate}
+        onChoose={onChoose}
         className={`school-month-summary${single ? ' school-month-single' : ''}`}
-        onClick={() => onActivate(event)}
         title={summary}
         aria-label={summary}
-        aria-keyshortcuts={onChoose ? 'Space' : undefined}
-        onKeyDown={keyEvent => {
-          if (keyEvent.key !== ' ' || !onChoose) return
-          keyEvent.preventDefault()
-          if (!keyEvent.repeat) onChoose(event)
-        }}
-        data-drag-event={onEdit ? event.id : undefined}
-        data-testid={onEdit ? 'event-drag-handle' : undefined}
+        data-testid={onChoose ? 'event-drag-handle' : undefined}
       >
         <span className="school-month-line">
           <time data-testid="event-time" dateTime={`${event.date}T${event.time}`}>
@@ -61,7 +79,7 @@ export function MonthEvent({ event, single, onActivate, onChoose, onEdit }) {
           </span>
         </span>
         <span className="school-month-location" data-testid="event-location">{event.location}</span>
-      </button>
+      </EventSummaryButton>
       <EditButton event={event} onEdit={onEdit} small />
     </div>
   )
@@ -71,7 +89,7 @@ function PendingLabel() {
   return <span className="school-pending-label"><Clock aria-hidden="true" />Pending request</span>
 }
 
-export function DayAgenda({ date, events, isApprover, onEdit, loading }) {
+export function DayAgenda({ date, events, isApprover, onEvent, onEdit, loading }) {
   const published = publishedCount(events)
   const countLabel = isApprover
     ? `${published} of ${dailyCapacity} published · ${events.length - published} pending`
@@ -86,15 +104,23 @@ export function DayAgenda({ date, events, isApprover, onEdit, loading }) {
         const repeatedStart = isApprover && events[index - 1]?.time === event.time
         const moreAtStart = isApprover && events[index + 1]?.time === event.time
         return (
-          <article className="school-agenda-event" key={event.id} data-testid="calendar-event" data-more-at-start={moreAtStart || undefined}>
+          <article
+            className="school-agenda-event"
+            key={event.id}
+            data-testid="calendar-event"
+            data-more-at-start={moreAtStart || undefined}
+            onClick={openEventFromRow}
+          >
             <time className={`school-agenda-time${repeatedStart ? ' school-agenda-time-repeated' : ''}`} data-testid="event-time" dateTime={`${event.date}T${event.time}`}>
               {clock} <small>{period}</small>
             </time>
             <div className={`school-agenda-card${pending ? ' school-agenda-pending' : ''}${own ? ' school-event-own' : ''}`}>
               <div className="school-agenda-description">
                 <h3>
-                  <EventImage image={event.image} className="school-event-image" />
-                  <span data-testid="event-title">{event.title}</span>
+                  <button type="button" className="school-agenda-title" data-event-details aria-haspopup="dialog" onClick={() => onEvent(event)}>
+                    <EventImage image={event.image} draggable={false} className="school-event-image" />
+                    <span data-testid="event-title">{event.title}</span>
+                  </button>
                 </h3>
                 {pending && <PendingLabel />}
                 {event.description && <p data-testid="event-description">{event.description}</p>}
@@ -141,10 +167,14 @@ export function CompactSummary({ date, events, onDay, onEvent, onEdit, onChoose,
   )
 }
 
-export function DatePopover({ popup, rootRef, events, onClose, onDay, onMove, onEdit }) {
+export function DatePopover({ popup, rootRef, events, onClose, onDay, onEvent, onChoose, onEdit }) {
   const panelRef = useRef(null)
   const closeRef = useRef(null)
   const { date, trigger, focusEvent } = popup
+
+  useEffect(() => {
+    if (events.length <= monthEventLimit) onClose(true)
+  }, [events.length, onClose])
 
   useLayoutEffect(() => {
     const panel = panelRef.current
@@ -152,7 +182,9 @@ export function DatePopover({ popup, rootRef, events, onClose, onDay, onMove, on
     const note = root.querySelector('.school-calendar-note')
     const position = () => {
       const rootBox = root.getBoundingClientRect()
-      const triggerBox = trigger.getBoundingClientRect()
+      const anchor = trigger.isConnected ? trigger : root.querySelector(`[data-more-date="${date}"]`)
+      if (!anchor) return
+      const triggerBox = anchor.getBoundingClientRect()
       const bottom = (note.dataset.visible === 'true' ? note.getBoundingClientRect().top : rootBox.bottom) - rootBox.top
       panel.style.maxHeight = Math.max(0, bottom - 16) + 'px'
       const panelBox = panel.getBoundingClientRect()
@@ -175,22 +207,36 @@ export function DatePopover({ popup, rootRef, events, onClose, onDay, onMove, on
       observer.disconnect()
       trigger.setAttribute('aria-expanded', 'false')
     }
-  }, [focusEvent, rootRef, trigger])
+  }, [date, focusEvent, rootRef, trigger])
 
   useEffect(() => {
     function dismissOutside(event) {
-      if (!panelRef.current.contains(event.target) && !event.target.closest('[data-more-date], dialog[open]')) onClose()
+      const target = event.target
+      if (panelRef.current.contains(target) || target.closest('dialog[open]')) return
+
+      if (rootRef.current.contains(target) && target.closest('.school-month, .school-compact-summary')) {
+        // Keep the list open through pointerdown so the same gesture can't select or drag a background event.
+        event.preventDefault()
+        event.stopPropagation()
+        if (event.type === 'click') onClose(true)
+      } else if (event.type === 'pointerdown') {
+        onClose()
+      }
     }
-    document.addEventListener('pointerdown', dismissOutside)
-    return () => document.removeEventListener('pointerdown', dismissOutside)
-  }, [onClose])
+    document.addEventListener('pointerdown', dismissOutside, true)
+    document.addEventListener('click', dismissOutside, true)
+    return () => {
+      document.removeEventListener('pointerdown', dismissOutside, true)
+      document.removeEventListener('click', dismissOutside, true)
+    }
+  }, [onClose, rootRef])
 
   return (
     <section ref={panelRef} id="school-date-events" className="school-datepicker-popover" role="dialog" aria-labelledby="school-date-events-title">
       <header className="school-popover-header">
         <div>
           <h3 id="school-date-events-title">{formatDay(date)}</h3>
-          {onEdit && <p>Drag to reschedule. Use the pencil to edit.</p>}
+          {onChoose && <p>Drag an event or press Space to move it. Use the pencil to edit.</p>}
         </div>
         <button type="button" ref={closeRef} className="school-popover-close" aria-label="Close event list" onClick={() => onClose(true)}>
           <X aria-hidden="true" />
@@ -201,17 +247,17 @@ export function DatePopover({ popup, rootRef, events, onClose, onDay, onMove, on
           const pending = event.status === 'pending'
           const own = isOwnPublishedEvent(event)
           const time = formatTime(event.time)
-          const summary = [onMove ? `Move ${event.title}` : event.title, time, event.location, pending ? 'Pending request' : 'Published'].filter(Boolean).join(', ')
+          const summary = [event.title, time, event.location, pending ? 'Pending request' : 'Published', own && ownershipLabel].filter(Boolean).join(', ')
           return (
             <div className={`school-popover-event${pending ? ' school-popover-pending' : ''}${own ? ' school-event-own' : ''}`} key={event.id} data-testid="popover-event">
-              <button
-                type="button"
+              <EventSummaryButton
+                event={event}
+                onActivate={onEvent}
+                onChoose={onChoose}
                 className="school-popover-summary"
-                onClick={() => onMove ? onMove(event) : onDay(date)}
-                aria-label={own ? `${summary}, ${ownershipLabel}` : summary}
-                data-drag-event={onMove ? event.id : undefined}
+                aria-label={summary}
               >
-                {onMove && <span className="school-popover-grip" aria-hidden="true"><GripVertical /></span>}
+                {onChoose && <span className="school-popover-grip" aria-hidden="true"><GripVertical /></span>}
                 <time data-testid="event-time" dateTime={`${date}T${event.time}`}>{time}</time>
                 <span className="school-popover-event-details">
                   <strong>
@@ -221,7 +267,7 @@ export function DatePopover({ popup, rootRef, events, onClose, onDay, onMove, on
                   {event.location && <span className="school-popover-location" data-testid="event-location">{event.location}</span>}
                   {pending && <PendingLabel />}
                 </span>
-              </button>
+              </EventSummaryButton>
               <EditButton event={event} onEdit={onEdit} />
             </div>
           )
