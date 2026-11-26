@@ -8,6 +8,8 @@ namespace SchoolCalendar.Server.Users;
 
 public static class UserEndpoints
 {
+    private const string UserWriteLock = "SchoolCalendar:UserWrites";
+
     public static void MapUsers(this RouteGroupBuilder api)
     {
         var users = api.MapGroup("/users").RequireAuthorization(Roles.Approver);
@@ -20,7 +22,10 @@ public static class UserEndpoints
     private static async Task<UserResponse[]> ListAsync(CalendarDbContext db, CancellationToken cancellationToken) =>
         await db.Users.AsNoTracking().Where(user => !user.IsDeleted)
             .OrderBy(user => user.LastName).ThenBy(user => user.FirstName).ThenBy(user => user.Id)
-            .Select(user => new UserResponse(user.Id, user.Login, user.FirstName, user.MiddleName, user.LastName, user.Role))
+            .Select(user => new UserResponse(user.Id, user.Login, user.FirstName, user.MiddleName, user.LastName, user.Role)
+            {
+                Version = user.Version
+            })
             .ToArrayAsync(cancellationToken);
 
     private static async Task<IResult> CreateAsync(
@@ -30,33 +35,71 @@ public static class UserEndpoints
         Apply(new JsonInput(body), user, hasher, creating: true);
         db.Users.Add(user);
         await SaveAsync(db, cancellationToken);
-        return Results.Json(UserResponse.From(user), statusCode: StatusCodes.Status201Created);
+        var response = UserResponse.From(user) with { Version = user.Version };
+        return Results.Json(response, statusCode: StatusCodes.Status201Created);
     }
 
     private static async Task<UserResponse> UpdateAsync(
         int id, JsonElement body, CalendarDbContext db, IPasswordHasher<CalendarUser> hasher,
         CancellationToken cancellationToken)
     {
+        await using var transaction = await DatabaseLock.AcquireAsync(db, UserWriteLock, cancellationToken);
         var user = await FindAsync(id, db, cancellationToken);
-        Apply(new JsonInput(body), user, hasher, creating: false);
+        var input = new JsonInput(body);
+        ApiFailure.CheckVersion(user.Version, input.NullableText("version"));
+        var wasApprover = user.Role == Roles.Approver;
+        Apply(input, user, hasher, creating: false);
+        if (wasApprover && user.Role != Roles.Approver)
+        {
+            await RequireAnotherApproverAsync(id, db, cancellationToken);
+        }
+
         await SaveAsync(db, cancellationToken);
-        return UserResponse.From(user);
+        await transaction.CommitAsync(cancellationToken);
+        return UserResponse.From(user) with { Version = user.Version };
     }
 
-    private static async Task<IResult> DeleteAsync(int id, CalendarDbContext db, CancellationToken cancellationToken)
+    private static async Task<IResult> DeleteAsync(
+        int id, string? version, CalendarDbContext db, CancellationToken cancellationToken)
     {
+        await using var transaction = await DatabaseLock.AcquireAsync(db, UserWriteLock, cancellationToken);
         var user = await FindAsync(id, db, cancellationToken);
+        ApiFailure.CheckVersion(user.Version, version);
+        if (user.Role == Roles.Approver)
+        {
+            await RequireAnotherApproverAsync(id, db, cancellationToken);
+        }
+
         // Retire the account and its credentials while keeping event audit references intact.
         user.IsDeleted = true;
         user.PasswordHash = "";
         user.SecurityStamp = Guid.NewGuid();
         await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return Results.NoContent();
     }
 
-    private static async Task<CalendarUser> FindAsync(int id, CalendarDbContext db, CancellationToken cancellationToken) =>
-        await db.Users.SingleOrDefaultAsync(user => user.Id == id && !user.IsDeleted, cancellationToken)
-        ?? throw ApiFailure.NotFound("The user");
+    private static async Task<CalendarUser> FindAsync(int id, CalendarDbContext db, CancellationToken cancellationToken)
+    {
+        // Cookie validation may have tracked this account before the write lock was acquired.
+        var tracked = db.Users.Local.SingleOrDefault(user => user.Id == id);
+        if (tracked is not null)
+        {
+            db.Entry(tracked).State = EntityState.Detached;
+        }
+
+        return await db.Users.SingleOrDefaultAsync(user => user.Id == id && !user.IsDeleted, cancellationToken)
+            ?? throw ApiFailure.NotFound("The user");
+    }
+
+    private static async Task RequireAnotherApproverAsync(int id, CalendarDbContext db, CancellationToken cancellationToken)
+    {
+        if (!await db.Users.AnyAsync(user => user.Id != id && user.Role == Roles.Approver && !user.IsDeleted,
+            cancellationToken))
+        {
+            throw ApiFailure.Conflict("At least one active approver must remain. Give another user approver access first.");
+        }
+    }
 
     private static void Apply(JsonInput input, CalendarUser user, IPasswordHasher<CalendarUser> hasher, bool creating)
     {

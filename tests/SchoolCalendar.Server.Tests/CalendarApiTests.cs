@@ -4,7 +4,7 @@ using SchoolCalendar.AcceptanceHost;
 
 namespace SchoolCalendar.Server.Tests;
 
-public sealed class CalendarApiTests : IAsyncLifetime
+public sealed partial class CalendarApiTests : IAsyncLifetime
 {
     private const string Date = "2028-02-29";
     private const string FollowingDate = "2028-03-01";

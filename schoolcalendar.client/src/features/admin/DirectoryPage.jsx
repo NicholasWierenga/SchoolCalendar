@@ -9,13 +9,27 @@ export default function DirectoryPage({ kind, onChange }) {
   const [revision, setRevision] = useState(0)
   const [form, setForm] = useState(null)
   const [deleting, setDeleting] = useState(null)
-  const { items, loading, error } = useList('/' + kind + 's', revision)
+  const directoryPath = '/' + kind + 's'
+  const { items, loading, error } = useList(directoryPath, revision)
+  const latestRecord = form?.record && items.find(item => item.id === form.record.id)
   const isUser = kind === 'user'
   const nameOf = (item) =>
     isUser ? [item.lastName + ',', item.firstName, item.middleName].filter(Boolean).join(' ') : item.name
-  function saved(id) {
-    setRevision((n) => n + 1)
-    onChange(id)
+  const refresh = () => setRevision(n => n + 1)
+
+  async function writeRecord(method, record, fields) {
+    let path = record ? directoryPath + '/' + record.id : directoryPath
+    if (method === 'DELETE') path += '?version=' + encodeURIComponent(record.version)
+    const body = method === 'PATCH' ? { ...fields, version: record.version } : fields
+    try {
+      await api(path, { method, body })
+    } catch (err) {
+      // Keep the open dialog's draft, but let the next edit start with the latest record.
+      if (err.status === 409 || err.status === 404) refresh()
+      throw err
+    }
+    refresh()
+    onChange(record?.id)
   }
   return (
     <section className="content-page">
@@ -89,17 +103,22 @@ export default function DirectoryPage({ kind, onChange }) {
         )}
       </div>
       {form && (
-        <DirectoryForm kind={kind} record={form.record} onSaved={() => saved(form.record?.id)} onClose={() => setForm(null)} />
+        <DirectoryForm
+          key={form.record?.version}
+          kind={kind}
+          record={form.record}
+          onSave={fields => writeRecord(form.record ? 'PATCH' : 'POST', form.record, fields)}
+          onReload={latestRecord && latestRecord.version !== form.record.version
+            ? () => setForm({ record: latestRecord }) : undefined}
+          onClose={() => setForm(null)}
+        />
       )}
       {deleting && (
         <ConfirmDelete
           title={'Delete ' + kind}
           name={nameOf(deleting)}
           onClose={() => setDeleting(null)}
-          onConfirm={async () => {
-            await api('/' + kind + 's/' + deleting.id, { method: 'DELETE' })
-            saved(deleting.id)
-          }}
+          onConfirm={() => writeRecord('DELETE', deleting)}
         />
       )}
     </section>

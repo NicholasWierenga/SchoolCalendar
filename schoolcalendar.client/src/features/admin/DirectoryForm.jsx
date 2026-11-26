@@ -1,8 +1,7 @@
 import { useState } from 'react'
-import { api } from '../../api'
 import Modal from '../../components/Modal'
 
-export default function DirectoryForm({ kind, record, onSaved, onClose }) {
+export default function DirectoryForm({ kind, record, onSave, onReload, onClose }) {
   const isUser = kind === 'user'
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -18,9 +17,7 @@ export default function DirectoryForm({ kind, record, onSaved, onClose }) {
     setBusy(true)
     setError('')
     try {
-      const path = '/' + kind + 's' + (record ? '/' + record.id : '')
-      await api(path, { method: record ? 'PATCH' : 'POST', body: fields })
-      onSaved()
+      await onSave(fields)
       onClose()
     } catch (err) {
       setError(err.message)
@@ -115,6 +112,11 @@ export default function DirectoryForm({ kind, record, onSaved, onClose }) {
             <p className="form-error" role="alert">
               {error}
             </p>
+          )}
+          {onReload && (
+            <button type="button" disabled={busy} onClick={onReload}>
+              Discard my edits and load latest
+            </button>
           )}
         </div>
         <footer className="form-actions">

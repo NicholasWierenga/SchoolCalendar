@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace SchoolCalendar.Server.Users;
 
 public static class Roles
@@ -27,6 +29,9 @@ public sealed class CalendarUser
 public sealed record UserResponse(
     int Id, string Login, string FirstName, string MiddleName, string LastName, string Role)
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public byte[]? Version { get; init; }
+
     public static UserResponse From(CalendarUser user) =>
         new(user.Id, user.Login, user.FirstName, user.MiddleName, user.LastName, user.Role);
 }
